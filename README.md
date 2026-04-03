@@ -76,10 +76,13 @@ cs add
 # 2. 查看所有 Profile
 cs list
 
-# 3. 直接启动默认 Profile
+# 3. 测试连通性
+cs test
+
+# 4. 直接启动默认 Profile
 cs
 
-# 4. 进入配置管理面板
+# 5. 进入配置管理面板
 cs config
 ```
 
