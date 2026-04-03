@@ -49,9 +49,9 @@ export function OverridesPanel({
   const finalRowW = rightContainerW - 5;
   const safeSpace = Math.max(40, finalRowW);
 
-  const W_KEY = Math.min(30, Math.floor(safeSpace * 0.36));
-  const W_VAL = Math.min(18, Math.floor(safeSpace * 0.20));
-  const W_GLO = Math.min(18, Math.floor(safeSpace * 0.20));
+  const W_KEY = Math.min(32, Math.floor(safeSpace * 0.28));
+  const W_VAL = Math.floor(safeSpace * 0.32);
+  const W_GLO = Math.floor(safeSpace * 0.15);
   const W_DESC = Math.max(10, safeSpace - W_KEY - W_VAL - W_GLO);
 
   return (
@@ -115,13 +115,13 @@ export function OverridesPanel({
                   </Box>
                   {/* 本地值列 */}
                   <Box width={W_VAL} flexShrink={0} paddingRight={1}>
-                    <Text color={val ? colors.secondary : colors.dim} bold={!!val && isActive} wrap="wrap">
+                    <Text color={val ? colors.secondary : colors.dim} bold={!!val && isActive} wrap="truncate-end">
                       {val ? val : '(not set) '}
                     </Text>
                   </Box>
                   {/* 全局值列 */}
                   <Box width={W_GLO} flexShrink={0} paddingRight={1}>
-                    <Text color={isActive ? colors.muted : colors.dim} wrap="wrap">
+                    <Text color={isActive ? colors.muted : colors.dim} wrap="truncate-end">
                       {globalVal ? globalVal : ' '}
                     </Text>
                   </Box>
