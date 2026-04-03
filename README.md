@@ -56,8 +56,11 @@ npx codex-start
 ### 传统全局安装
 
 ```bash
-# 全局安装
+# 全局安装 (NPM)
 npm install -g codex-start
+
+# 从 GitHub 安装最新版
+npm install -g github:sunbigfly/codex-start
 
 # 或从源码
 git clone https://github.com/sunbigfly/codex-start.git
