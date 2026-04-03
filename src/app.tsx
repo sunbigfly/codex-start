@@ -23,16 +23,13 @@ function launchCodex(profile: Profile) {
   
   injectProfile(profile);
   const args = buildLaunchArgs(profile);
-  printLaunchInfo(profile);
   
-  setTimeout(() => {
-    const child = spawn('codex', args, { stdio: 'inherit' });
-    child.on('error', (err) => {
-      console.error(`\n  \x1b[31mFailed:\x1b[0m ${err.message}`);
-      process.exit(1);
-    });
-    child.on('exit', (code) => process.exit(code ?? 0));
-  }, 1000);
+  const child = spawn('codex', args, { stdio: 'inherit' });
+  child.on('error', (err) => {
+    console.error(`\n  \x1b[31mFailed:\x1b[0m ${err.message}`);
+    process.exit(1);
+  });
+  child.on('exit', (code) => process.exit(code ?? 0));
 }
 
 // ─── CLI 命令路由（非 TUI，直接 console 输出） ──
