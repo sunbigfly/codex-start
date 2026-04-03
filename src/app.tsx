@@ -344,14 +344,14 @@ function ListApp() {
                 {activeProfile.isDefault && <Text color={colors.warning}>[Default]</Text>}
               </Box>
 
-              <Box flexDirection="row" marginBottom={1}>
-                 <Box flexDirection="column" width="50%" marginRight={1}>
-                   <Text color={colors.dim}>Base URL</Text>
-                   <Text color={colors.muted} wrap="truncate-end">{activeProfile.base_url || '(empty)'}</Text>
+              <Box flexDirection="column" marginBottom={1} gap={1}>
+                 <Box flexDirection="row" width="100%">
+                   <Text color={colors.dim} bold>{'Base URL: '.padEnd(12)}</Text>
+                   <Text color={colors.muted}>{activeProfile.base_url || '(empty)'}</Text>
                  </Box>
-                 <Box flexDirection="column" width="50%" marginRight={1}>
-                   <Text color={colors.dim}>API Key</Text>
-                   <Text color={colors.muted} wrap="truncate-end">{maskApiKey(activeProfile.api_key)}</Text>
+                 <Box flexDirection="row" width="100%">
+                   <Text color={colors.dim} bold>{'API Key: '.padEnd(12)}</Text>
+                   <Text color={colors.muted}>{maskApiKey(activeProfile.api_key)}</Text>
                  </Box>
               </Box>
 

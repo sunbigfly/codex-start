@@ -1,0 +1,24 @@
+全面重构：修复11项Bug + 10项新特性 + README重构 + MIT协议
+
+Bug修复：
+- 删除 schema.ts 自引用死循环和 ProfileForm.tsx 死代码
+- API Key 全局掩码处理（AddProfilePanel / ListApp）
+- injector/store 防目录不存在崩溃 + JSON容错
+- ConfigUI setState side-effect 改为 useEffect 同步
+- TestUI useEffect 依赖补全 + 超时控制
+- 搜索模式焦点冲突修复（SelectInput/TextInput）
+- 所有操作增加 toast 反馈
+- 修复 ListApp 中 Base URL 和 API Key 显示截断问题（改为单行全宽显示）
+
+新特性：
+- Profile 克隆 / 导出导入 / 排序 / 模糊搜索
+- cs run <name> 按名称启动
+- 测试耗时显示 + 15s超时保护
+- 模型自动发现（Fetch from API）
+- config.toml 注入预览
+
+重构：
+- 新建 utils.ts 统一工具函数
+- TestUI 完全重写（通用 runTest + useCallback）
+- README 升级为 GitHub 开源标准格式
+- 新增 MIT LICENSE
