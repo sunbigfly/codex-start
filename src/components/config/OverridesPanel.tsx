@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import { colors, symbols } from '../../theme.js';
 import type { Profile } from '../../types.js';
 import { OVERRIDE_FIELDS, TABS, getGlobalVal } from './constants.js';
+import { maskApiKey } from '../../utils.js';
 
 export function OverridesPanel({
   profile,
@@ -81,7 +82,8 @@ export function OverridesPanel({
         <Box flexDirection="column" paddingTop={1} minHeight={20}>
           {visibleFields.map((f) => {
             const idx = OVERRIDE_FIELDS.indexOf(f);
-            const val = (profile as any)[f.key] || '';
+            let val = (profile as any)[f.key] || '';
+            if (f.key === 'api_key' && val) val = maskApiKey(String(val));
             let globalVal = getGlobalVal(globalConfig, f);
             if (f.group === 'cfg_profile') globalVal = ''; // Profile settings have no globals
             const isActive = focusState === 'right' && activeFieldIdx === idx;
@@ -114,7 +116,7 @@ export function OverridesPanel({
                   </Box>
                   {/* 本地值列 */}
                   <Box width={W_VAL} flexShrink={0} paddingRight={1}>
-                    <Text color={val ? colors.secondary : colors.dim} bold={!!val && isActive} wrap="truncate-end">
+                    <Text color={val ? colors.secondary : colors.dim} bold={!!val && isActive} wrap={isActive ? "wrap" : "truncate-end"}>
                       {val ? val : '(not set) '}
                     </Text>
                   </Box>
