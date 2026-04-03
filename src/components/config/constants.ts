@@ -9,7 +9,7 @@ export interface FieldDef {
 }
 
 // Source: https://developers.openai.com/codex/models (2026-04)
-export const CODEX_MODELS = {
+const CODEX_MODELS = {
   recommended: ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex', 'gpt-5.3-codex-spark'],
   alternative: ['o4-mini', 'gpt-5.2-codex', 'gpt-5.2', 'gpt-5.1-codex-max', 'gpt-5.1', 'gpt-5.1-codex', 'gpt-5-codex', 'gpt-5-codex-mini'],
   legacy: ['o3', 'o1', 'o3-mini', 'gpt-4o', 'gpt-4.5-preview'],

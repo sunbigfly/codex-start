@@ -1,9 +1,3 @@
-export const DEFAULT_PROFILE_EXTRAS = {
-  personality: '',
-  model_reasoning_summary: 'auto',
-  service_tier: 'fast',
-};
-
 export interface Profile {
   id: string;
   name: string;
@@ -49,4 +43,3 @@ export interface AppStore {
   globalTheme?: string;
 }
 
-export type View = 'main' | 'list' | 'config' | 'add' | 'edit' | 'test';

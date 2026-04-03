@@ -71,7 +71,7 @@ const tokyoNight = {
   tab_inactive: '#24283b',
 };
 
-export const themes: Record<string, typeof catppuccinMocha> = {
+const themes: Record<string, typeof catppuccinMocha> = {
   mocha: catppuccinMocha,
   nord,
   dracula,
