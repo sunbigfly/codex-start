@@ -49,9 +49,9 @@ export function OverridesPanel({
   const finalRowW = rightContainerW - 5;
   const safeSpace = Math.max(40, finalRowW);
 
-  const W_KEY = Math.min(32, Math.floor(safeSpace * 0.28));
-  const W_VAL = Math.floor(safeSpace * 0.32);
-  const W_GLO = Math.floor(safeSpace * 0.15);
+  const W_KEY = Math.min(30, Math.floor(safeSpace * 0.35));
+  const W_VAL = Math.min(24, Math.floor(safeSpace * 0.22));
+  const W_GLO = Math.min(18, Math.floor(safeSpace * 0.15));
   const W_DESC = Math.max(10, safeSpace - W_KEY - W_VAL - W_GLO);
 
   return (
