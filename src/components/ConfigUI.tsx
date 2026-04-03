@@ -66,6 +66,13 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
 
   const [globalTick, setGlobalTick] = useState(0);
   const [toastMsg, setToastMsg] = useState<{text: string, type: 'error' | 'success'} | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showToast = (text: string, type: 'success' | 'error', duration = 3000) => {
+    setToastMsg({ text, type });
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => setToastMsg(null), duration);
+  };
 
   const globalConfig = useMemo(() => readCurrentConfig(), [globalTick]);
   const profiles = store.profiles;
@@ -81,18 +88,30 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
     setSelectedIdx(newIdx);
   };
 
-  useInput((input, key) => {
+  useInput((input: string, key: any) => {
     if (historyMode || testMode || addMode || deleteMode || focusState === 'edit' || previewMode) return;
 
     if (focusState === 'right') {
       if (key.escape || key.leftArrow) { setFocusState('left'); return; }
       if (key.upArrow) { setRightIdx(v => Math.max(0, v - 1)); return; }
       if (key.downArrow) { setRightIdx(v => Math.min(OVERRIDE_FIELDS.length - 1, v + 1)); return; }
-      if (key.tab) {
+      if (key.tab || (key as any).shiftTab) {
+        const isShiftTab = key.shift || (key as any).shiftTab;
         const currGroup = OVERRIDE_FIELDS[rightIdx].group;
-        let nextIdx = OVERRIDE_FIELDS.findIndex((f, idx) => idx > rightIdx && f.group !== currGroup);
-        if (nextIdx === -1) nextIdx = 0;
-        setRightIdx(nextIdx);
+        if (isShiftTab) {
+          const currGroupFirstIdx = OVERRIDE_FIELDS.findIndex(f => f.group === currGroup);
+          if (currGroupFirstIdx <= 0) {
+            const lastGroup = OVERRIDE_FIELDS[OVERRIDE_FIELDS.length - 1].group;
+            setRightIdx(OVERRIDE_FIELDS.findIndex(f => f.group === lastGroup));
+          } else {
+            const prevGroup = OVERRIDE_FIELDS[currGroupFirstIdx - 1].group;
+            setRightIdx(OVERRIDE_FIELDS.findIndex(f => f.group === prevGroup));
+          }
+        } else {
+          let nextIdx = OVERRIDE_FIELDS.findIndex((f, idx) => idx > rightIdx && f.group !== currGroup);
+          if (nextIdx === -1) nextIdx = 0;
+          setRightIdx(nextIdx);
+        }
         return;
       }
       if (input === 'g') {
@@ -102,22 +121,19 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
         const globalVal = getGlobalVal(globalConfig, field) || '';
         
         if (!val) {
-          setToastMsg({ text: `[${field.label}] 暂无专属配置值，无法同步至全局`, type: 'error' });
-          setTimeout(() => setToastMsg(null), 3000);
+          showToast(`[${field.label}] 暂无专属配置值，无法同步至全局`, 'error');
           return;
         }
         if (val === globalVal) {
-          setToastMsg({ text: `[${field.label}] 专属值与当前全局值无差异，无需写入`, type: 'error' });
-          setTimeout(() => setToastMsg(null), 3000);
+          showToast(`[${field.label}] 专属值与当前全局值无差异，无需写入`, 'error');
           return;
         }
 
         pushHistory(store, `Save [${field.label}] to Global`);
         saveGlobalConfigField(field.key, val);
         setGlobalTick(t => t + 1);
-        setToastMsg({ text: `已成功同步 [${field.label}] 持久化写入全局配置`, type: 'success' });
+        showToast(`已成功同步 [${field.label}] 持久化写入全局配置`, 'success');
         onUpdate({ ...store });
-        setTimeout(() => setToastMsg(null), 3000);
         return;
       }
       if (input === 'p') { setPreviewMode(true); return; }
@@ -137,8 +153,7 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
       const newProfiles = [...profiles, cloned];
       onUpdate({ ...store, profiles: newProfiles });
       setSelectedIdx(newProfiles.length - 1);
-      setToastMsg({ text: `已克隆 "${selected.name}" -> "${cloned.name}"`, type: 'success' });
-      setTimeout(() => setToastMsg(null), 3000);
+      showToast(`已克隆 "${selected.name}" -> "${cloned.name}"`, 'success');
       return;
     }
     if (input === 'x') {
@@ -146,8 +161,7 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
       const json = exportProfiles(profiles);
       const exportPath = join(homedir(), '.codex-start', 'profiles-export.json');
       writeFileSync(exportPath, json + '\n');
-      setToastMsg({ text: `已导出 ${profiles.length} 个 profiles -> ${exportPath}`, type: 'success' });
-      setTimeout(() => setToastMsg(null), 4000);
+      showToast(`已导出 ${profiles.length} 个 profiles -> ${exportPath}`, 'success', 4000);
       return;
     }
     if (input === 'h') {
@@ -263,9 +277,9 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
       <TestUI
         profiles={profiles} globalConfig={globalConfig}
         testResults={testResults}
-        setTestResults={(updater) => setTestResults(updater)}
+        setTestResults={setTestResults}
         testDurations={testDurations}
-        setTestDurations={(updater) => setTestDurations(updater)}
+        setTestDurations={setTestDurations}
         onCancel={() => setTestMode(false)}
       />
     );
@@ -296,50 +310,63 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
         <Box flexDirection="column" width="10%" minWidth={14} flexShrink={0} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} borderColor={colors.darkBorder} padding={1} paddingRight={2}>
           <Text color={colors.muted} bold> Profiles</Text>
           <Box marginTop={1} flexDirection="column">
-            {focusState === 'left' && profiles.length > 0 ? (
+            {focusState === 'left' && profiles.length > 0 && !addMode && !deleteMode && !historyMode && !testMode && !previewMode ? (
               <SelectInput
                 items={listItems}
                 onSelect={() => { setFocusState('right'); setRightIdx(0); }}
-                onHighlight={(item) => {
+                onHighlight={(item: any) => {
                   const idx = profiles.findIndex((p) => p.id === item.value);
                   if (idx >= 0) { queueMicrotask(() => setSelectedIdx(idx)); }
                 }}
-                indicatorComponent={({ isSelected }) => (
-                  <Text color={isSelected ? colors.primary : colors.dim}>{isSelected ? symbols.arrow : ' '} </Text>
+                indicatorComponent={({ isSelected }: any) => (
+                  <Text color={isSelected ? colors.primary : colors.dim}>{isSelected ? `${symbols.arrow} ` : '  '}</Text>
                 )}
-                itemComponent={({ isSelected, label }) => {
+                itemComponent={({ isSelected, label }: any) => {
                   const p = profiles.find((pr) => pr.id === label);
                   if (!p) return <Text wrap="truncate-end">{label}</Text>;
                   const res = testResults[p.id];
                   return (
-                    <Box gap={1} flexDirection="row">
-                      <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? symbols.star : ' '}</Text>
-                      {res === 'ok' && <Text color={colors.success}>{symbols.check}</Text>}
-                      {res === 'fail' && <Text color={colors.danger}>{symbols.cross}</Text>}
-                      {res === 'running' && <Text color={colors.warning}>{symbols.circle}</Text>}
-                      <Text color={isSelected ? colors.text : colors.muted} wrap="truncate-end">{p.name}</Text>
+                    <Box>
+                      <Text wrap="truncate-end">
+                        <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '  '}</Text>
+                        {res === 'ok' && <Text color={colors.success}>{`${symbols.check} `}</Text>}
+                        {res === 'fail' && <Text color={colors.danger}>{`${symbols.cross} `}</Text>}
+                        {res === 'running' && <Text color={colors.warning}>{`${symbols.circle} `}</Text>}
+                        <Text color={isSelected ? colors.text : colors.muted}>{p.name}</Text>
+                      </Text>
                     </Box>
                   );
                 }}
               />
-            ) : focusState === 'left' ? (
+            ) : focusState === 'left' && profiles.length === 0 ? (
               <Box flexDirection="column"><Text color={colors.dim}>[No profiles]</Text></Box>
             ) : (
               <Box flexDirection="column">
                 {profiles.map((p, i) => {
-                  const isSelected = i === selectedIdx;
+                  const isSelected = i === selectedIdx && !addMode && !deleteMode;
                   const res = testResults[p.id];
                   return (
-                    <Box key={p.id} gap={1} paddingLeft={isSelected ? 0 : 2} flexDirection="row">
-                      {isSelected && <Text color={colors.primary}>{symbols.arrow}</Text>}
-                      <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? symbols.star : ' '}</Text>
-                      {res === 'ok' && <Text color={colors.success}>{symbols.check}</Text>}
-                      {res === 'fail' && <Text color={colors.danger}>{symbols.cross}</Text>}
-                      {res === 'running' && <Text color={colors.warning}>{symbols.circle}</Text>}
-                      <Text color={colors.muted} wrap="truncate-end">{p.name}</Text>
+                    <Box key={p.id}>
+                      <Text wrap="truncate-end">
+                        <Text color={isSelected ? colors.primary : colors.dim}>{isSelected ? `${symbols.arrow} ` : '  '}</Text>
+                        <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '  '}</Text>
+                        {res === 'ok' && <Text color={colors.success}>{`${symbols.check} `}</Text>}
+                        {res === 'fail' && <Text color={colors.danger}>{`${symbols.cross} `}</Text>}
+                        {res === 'running' && <Text color={colors.warning}>{`${symbols.circle} `}</Text>}
+                        <Text color={colors.muted}>{p.name}</Text>
+                      </Text>
                     </Box>
                   )
                 })}
+                {addMode && (
+                  <Box marginTop={1}>
+                    <Text>
+                      <Text color={colors.primary}>{`${symbols.arrow} `}</Text>
+                      <Text color={colors.dim}>{'  '}</Text>
+                      <Text color={colors.primary} italic>*(New)*</Text>
+                    </Text>
+                  </Box>
+                )}
               </Box>
             )}
           </Box>
@@ -387,7 +414,7 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
 
 // config.toml 预览面板
 function PreviewPanel({ profile, globalConfig, onClose }: { profile: Profile; globalConfig: Record<string, any>; onClose: () => void }) {
-  useInput((_input, key) => {
+  useInput((_input: string, key: any) => {
     if (key.escape) onClose();
   });
 

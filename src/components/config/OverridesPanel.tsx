@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 import { colors, symbols } from '../../theme.js';
 import type { Profile } from '../../types.js';
 import { OVERRIDE_FIELDS, TABS, getGlobalVal } from './constants.js';
-import { maskApiKey } from '../../utils.js';
+
 
 export function OverridesPanel({
   profile,
@@ -49,9 +49,19 @@ export function OverridesPanel({
   const finalRowW = rightContainerW - 5;
   const safeSpace = Math.max(40, finalRowW);
 
-  const W_KEY = Math.min(30, Math.floor(safeSpace * 0.35));
-  const W_VAL = Math.min(24, Math.floor(safeSpace * 0.22));
-  const W_GLO = Math.min(18, Math.floor(safeSpace * 0.15));
+  // 计算字段名最大宽度
+  const computeStrLen = (str: string) => {
+    let len = 0;
+    for (let i = 0; i < str.length; i++) {
+      len += str.charCodeAt(i) > 255 ? 2 : 1;
+    }
+    return len;
+  };
+  const MAX_LABEL_WIDTH = Math.max(...OVERRIDE_FIELDS.map(f => computeStrLen(f.label)));
+
+  const W_VAL = Math.max(8, Math.floor(safeSpace * 0.12));
+  const W_GLO = Math.max(8, Math.floor(safeSpace * 0.12));
+  const W_KEY = Math.min(MAX_LABEL_WIDTH + 4, Math.max(10, Math.floor(safeSpace * 0.3)));
   const W_DESC = Math.max(10, safeSpace - W_KEY - W_VAL - W_GLO);
 
   return (
@@ -115,13 +125,13 @@ export function OverridesPanel({
                   </Box>
                   {/* 本地值列 */}
                   <Box width={W_VAL} flexShrink={0} paddingRight={1}>
-                    <Text color={val ? colors.secondary : colors.dim} bold={!!val && isActive} wrap="wrap">
+                    <Text color={val ? colors.secondary : colors.dim} bold={!!val && isActive} wrap="truncate-end">
                       {val ? val : '(not set) '}
                     </Text>
                   </Box>
                   {/* 全局值列 */}
                   <Box width={W_GLO} flexShrink={0} paddingRight={1}>
-                    <Text color={isActive ? colors.muted : colors.dim} wrap="wrap">
+                    <Text color={isActive ? colors.muted : colors.dim} wrap="truncate-end">
                       {globalVal ? globalVal : ' '}
                     </Text>
                   </Box>

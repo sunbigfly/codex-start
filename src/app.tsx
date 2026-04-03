@@ -7,7 +7,7 @@ import { ConfigUI } from './components/ConfigUI.js';
 import { loadStore, saveStore, ensureBackup, createProfile, readCurrentConfig, cloneProfile, exportProfiles, importProfiles } from './store.js';
 import { injectProfile, buildLaunchArgs, restoreBackup } from './injector.js';
 import { colors, symbols } from './theme.js';
-import { maskApiKey, fuzzyMatch } from './utils.js';
+import { fuzzyMatch } from './utils.js';
 import type { Profile, AppStore } from './types.js';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -158,7 +158,7 @@ function ListApp() {
     setTimeout(() => setToastMsg(''), 3000);
   };
 
-  useInput((input, key) => {
+  useInput((input: string, key: any) => {
     // 搜索模式下只允许 Esc 和 Enter，其他交给 TextInput
     if (searchMode) {
       if (key.escape) { setSearchMode(false); setSearchQuery(''); return; }
@@ -302,10 +302,12 @@ function ListApp() {
                 <Text color={colors.dim} italic>No matches</Text>
               ) : (
                 filteredProfiles.map((p, i) => (
-                  <Box key={p.id} gap={1}>
-                    <Text color={i === 0 ? colors.primary : colors.dim}>{i === 0 ? symbols.arrow : ' '}</Text>
-                    <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? symbols.star : ' '}</Text>
-                    <Text color={i === 0 ? colors.text : colors.muted} wrap="truncate-end">{p.name}</Text>
+                  <Box key={p.id}>
+                    <Text wrap="truncate-end">
+                      <Text color={i === 0 ? colors.primary : colors.dim}>{i === 0 ? `${symbols.arrow} ` : '  '}</Text>
+                      <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '  '}</Text>
+                      <Text color={i === 0 ? colors.text : colors.muted}>{p.name}</Text>
+                    </Text>
                   </Box>
                 ))
               )
@@ -324,9 +326,11 @@ function ListApp() {
                   const p = store.profiles.find((pr) => pr.id === label);
                   if (!p) return <Text wrap="truncate-end">{label}</Text>;
                   return (
-                    <Box gap={1}>
-                      <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? symbols.star : ' '}</Text>
-                      <Text color={isSelected ? colors.text : colors.muted} bold={isSelected} wrap="truncate-end">{p.name}</Text>
+                    <Box>
+                      <Text wrap="truncate-end">
+                        <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '  '}</Text>
+                        <Text color={isSelected ? colors.text : colors.muted} bold={isSelected}>{p.name}</Text>
+                      </Text>
                     </Box>
                   );
                 }}
@@ -351,16 +355,16 @@ function ListApp() {
                  </Box>
                  <Box flexDirection="row" width="100%">
                    <Text color={colors.dim} bold>{'API Key: '.padEnd(12)}</Text>
-                   <Text color={colors.muted}>{maskApiKey(activeProfile.api_key)}</Text>
+                   <Text color={colors.muted}>{activeProfile.api_key || '(empty)'}</Text>
                  </Box>
               </Box>
 
-              <Box flexDirection="row" marginBottom={1}>
-                 <Box flexDirection="column" width="50%" marginRight={1}>
+              <Box flexDirection="row" marginBottom={1} gap={4}>
+                 <Box flexDirection="column">
                    <Text color={colors.dim}>Engine (Model)</Text>
                    <Text color={colors.secondary}>{activeProfile.model || globalConfig.model || '(not set)'}</Text>
                  </Box>
-                 <Box flexDirection="column" width="50%" marginRight={1}>
+                 <Box flexDirection="column">
                    <Text color={colors.dim}>Reasoning Effort</Text>
                    <Text color={colors.warning}>{activeProfile.model_reasoning_effort || globalConfig.model_reasoning_effort || '(not set)'}</Text>
                  </Box>

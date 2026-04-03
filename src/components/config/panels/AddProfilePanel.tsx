@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { colors, symbols } from '../../../theme.js';
-import { maskApiKey } from '../../../utils.js';
+
 
 export function AddProfilePanel({
   onAdd,
@@ -59,7 +59,7 @@ export function AddProfilePanel({
                 setAddStep(2); 
               }} placeholder="sk-..." />
             ) : (
-              <Text color={colors.dim}>{maskApiKey(addKey)}</Text>
+              <Text color={colors.dim}>{addKey}</Text>
             )}
           </Box>
         )}

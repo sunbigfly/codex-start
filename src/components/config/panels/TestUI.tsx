@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { spawn } from 'node:child_process';
@@ -7,6 +7,19 @@ import type { Profile } from '../../../types.js';
 import { ALL_MODELS } from '../constants.js';
 import { ensureBackup, loadStore } from '../../../store.js';
 import { restoreBackup, injectProfile } from '../../../injector.js';
+
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+function useSpinner() {
+  const [frame, setFrame] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setFrame(f => (f + 1) % SPINNER_FRAMES.length), 80);
+    return () => clearInterval(timer);
+  }, []);
+  return SPINNER_FRAMES[frame];
+}
+
+const stripAnsi = (str: string) => str.replace(/\x1b\[[0-9;]*m/g, '').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
+
 
 type TestStatus = 'ok' | 'fail' | 'running';
 const TEST_TIMEOUT_MS = 15_000;
@@ -22,10 +35,12 @@ interface Props {
 }
 
 export function TestUI({ profiles, globalConfig, testResults, setTestResults, testDurations, setTestDurations, onCancel }: Props) {
+  const spinnerFrame = useSpinner();
   const [mode, setMode] = useState<'single' | 'batch'>('single');
   const [profileIdx, setProfileIdx] = useState(0);
   const [modelIdx, setModelIdx] = useState(0);
   const [focus, setFocus] = useState<'left' | 'right'>('left');
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(profiles.map(p => [p.id, true]))
   );
@@ -50,7 +65,7 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
   };
 
   // 通用执行测试的函数，含超时控制和耗时记录
-  const runTest = useCallback((profile: Profile, model: string): Promise<{ ok: boolean; output: string; durationMs: number }> => {
+  const runTest = useCallback((profile: Profile, model: string, signal?: AbortSignal, onData?: (chunk: string) => void): Promise<{ ok: boolean; output: string; durationMs: number }> => {
     return new Promise(resolve => {
       const startTime = Date.now();
       const store = ensureBackup(loadStore());
@@ -61,37 +76,50 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
       let stdout = '', stderr = '';
       let finished = false;
 
+      const finishAndResolve = (result: { ok: boolean; output: string; durationMs: number }) => {
+        if (finished) return;
+        finished = true;
+        if (signal) signal.removeEventListener('abort', handleAbort);
+        restoreBackup(store.backup);
+        resolve(result);
+      };
+
+      const handleAbort = () => {
+        child.kill('SIGKILL');
+        finishAndResolve({ ok: false, output: 'Cancelled by user', durationMs: Date.now() - startTime });
+      };
+
+      if (signal) {
+        if (signal.aborted) return handleAbort();
+        signal.addEventListener('abort', handleAbort);
+      }
+
       const timer = setTimeout(() => {
-        if (!finished) {
-          finished = true;
-          child.kill('SIGTERM');
-          const dur = Date.now() - startTime;
-          restoreBackup(store.backup);
-          resolve({ ok: false, output: `Timeout after ${(dur / 1000).toFixed(1)}s`, durationMs: dur });
-        }
+        child.kill('SIGTERM');
+        finishAndResolve({ ok: false, output: `Timeout after ${TEST_TIMEOUT_MS / 1000}s`, durationMs: Date.now() - startTime });
       }, TEST_TIMEOUT_MS);
 
-      child.stdout?.on('data', (d: any) => { stdout += d.toString(); });
-      child.stderr?.on('data', (d: any) => { stderr += d.toString(); });
+      child.stdout?.on('data', (d: any) => { 
+        const chunk = stripAnsi(d.toString());
+        stdout += chunk; 
+        if (onData) onData(chunk);
+      });
+      child.stderr?.on('data', (d: any) => { 
+        const chunk = stripAnsi(d.toString());
+        stderr += chunk;
+        if (onData) onData(chunk);
+      });
       child.on('error', (e: any) => {
-        if (finished) return;
-        finished = true;
         clearTimeout(timer);
-        const dur = Date.now() - startTime;
-        restoreBackup(store.backup);
-        resolve({ ok: false, output: `Error: ${e.message}`, durationMs: dur });
+        finishAndResolve({ ok: false, output: `Error: ${e.message}`, durationMs: Date.now() - startTime });
       });
       child.on('close', (code: number | null) => {
-        if (finished) return;
-        finished = true;
         clearTimeout(timer);
-        const dur = Date.now() - startTime;
         const ok = code === 0 && !!stdout.trim();
-        restoreBackup(store.backup);
-        resolve({
+        finishAndResolve({
           ok,
           output: ok ? stdout.trim().slice(0, 250) : (stderr.trim() || stdout.trim() || `exit ${code}`).slice(0, 500),
-          durationMs: dur,
+          durationMs: Date.now() - startTime,
         });
       });
     });
@@ -103,47 +131,54 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
     if (!p) return;
     setPhase('running');
     setSingleOutput('');
+    abortControllerRef.current = new AbortController();
+
     setTestResults(prev => ({ ...prev, [p.id]: 'running' }));
-    const result = await runTest(p, model);
+    const result = await runTest(p, model, abortControllerRef.current.signal, (chunk) => {
+      setSingleOutput(prev => (prev + chunk).slice(-2000)); // Keeps last 2000 chars to avoid memory leaks
+    });
+    
     setTestResults(prev => ({ ...prev, [p.id]: result.ok ? 'ok' : 'fail' }));
     setTestDurations(prev => ({ ...prev, [p.id]: result.durationMs }));
     setSingleOutput(result.output);
     setPhase('done');
+    abortControllerRef.current = null;
   }, [profiles, profileIdx, runTest, setTestResults, setTestDurations]);
 
-  // Batch test (useEffect-driven)
-  useEffect(() => {
-    if (phase !== 'running' || batchTargets.length === 0) return;
-    let active = true;
-    (async () => {
-      for (const t of batchTargets) {
-        if (!active) break;
-        const p = profiles.find(pr => pr.id === t.id);
-        if (!p) continue;
-        setTestResults(prev => ({ ...prev, [p.id]: 'running' }));
-        const result = await runTest(p, t.model);
-        if (!active) break;
-        setTestResults(prev => ({ ...prev, [p.id]: result.ok ? 'ok' : 'fail' }));
-        setTestDurations(prev => ({ ...prev, [p.id]: result.durationMs }));
-      }
-      if (active) { setBatchTargets([]); setPhase('done'); }
-    })();
-    return () => { active = false; };
-  }, [batchTargets, profiles, runTest, setTestResults, setTestDurations, phase]);
-
-  const startBatchTest = () => {
-    const unifiedModel = resolveModel();
+  const startBatchTest = async (overrideUnifiedModel?: string) => {
+    const unifiedModel = overrideUnifiedModel || resolveModel();
     const targets = profiles
       .filter(p => checked[p.id])
       .map(p => ({ id: p.id, model: batchStrategy === 'unified' ? unifiedModel : (p.model || fallback) }));
     if (targets.length === 0) return;
+    
     setBatchTargets(targets);
     setPhase('running');
+    abortControllerRef.current = new AbortController();
+
+    for (const t of targets) {
+      if (abortControllerRef.current?.signal.aborted) break;
+      const p = profiles.find(pr => pr.id === t.id);
+      if (!p) continue;
+      
+      setTestResults(prev => ({ ...prev, [p.id]: 'running' }));
+      const result = await runTest(p, t.model, abortControllerRef.current.signal);
+      setTestResults(prev => ({ ...prev, [p.id]: result.ok ? 'ok' : 'fail' }));
+      setTestDurations(prev => ({ ...prev, [p.id]: result.durationMs }));
+    }
+    
+    setPhase('done');
+    abortControllerRef.current = null;
   };
 
   // Input
-  useInput((input, key) => {
-    if (phase === 'running') return;
+  useInput((input: string, key: any) => {
+    if (phase === 'running') {
+      if (key.escape) {
+        abortControllerRef.current?.abort();
+      }
+      return;
+    }
     if (phase === 'done') { if (key.escape) setPhase('setup'); return; }
     if (customInput) { if (key.escape) setCustomInput(false); return; }
 
@@ -194,50 +229,11 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
   };
 
   // Running / Done render
-  if (phase === 'running' || phase === 'done') {
-    const targets = mode === 'batch' ? profiles.filter(p => checked[p.id]) : [profiles[profileIdx]].filter(Boolean);
-    const okN = targets.filter(p => testResults[p.id] === 'ok').length;
-    const failN = targets.filter(p => testResults[p.id] === 'fail').length;
-    return (
-      <Box flexDirection="column" padding={1}>
-        <Text color={colors.accent} bold>{symbols.dot} {mode === 'batch' ? 'Batch Testing' : 'Testing'} {mode === 'single' ? profiles[profileIdx]?.name : `${targets.length} profiles`}</Text>
-        {mode === 'batch' && (
-          <Box marginTop={1} gap={2}>
-            <Text color={colors.primary}>[ Total: {targets.length} ]</Text>
-            <Text color={colors.success}>{symbols.check} OK: {okN}</Text>
-            <Text color={colors.danger}>{symbols.cross} Fail: {failN}</Text>
-            <Text color={colors.warning}>{symbols.circle} Pending: {targets.length - okN - failN}</Text>
-          </Box>
-        )}
-        <Box marginTop={1} flexDirection="column" paddingLeft={1}>
-          {targets.map(p => {
-            const res = testResults[p.id];
-            return (
-              <Box key={p.id} gap={1}>
-                {res === 'ok' ? <Text color={colors.success}>{symbols.check}</Text>
-                  : res === 'fail' ? <Text color={colors.danger}>{symbols.cross}</Text>
-                  : res === 'running' ? <Text color={colors.warning}>{symbols.circle}</Text>
-                  : <Text color={colors.dim}>[..]</Text>}
-                <Text color={res === 'running' ? colors.text : colors.muted}>{p.name}</Text>
-                {(res === 'ok' || res === 'fail') && <Text color={res === 'ok' ? colors.success : colors.danger}>{fmtDur(p.id)}</Text>}
-              </Box>
-            );
-          })}
-        </Box>
-        {mode === 'single' && singleOutput && (
-          <Box flexDirection="column" marginTop={1} paddingLeft={2}>
-            {singleOutput.split('\n').map((line, i) => (
-              <Text key={i} color={testResults[profiles[profileIdx]?.id] === 'ok' ? colors.secondary : colors.muted}>{line}</Text>
-            ))}
-          </Box>
-        )}
-        <Box marginTop={1}><Text color={colors.dim}>{phase === 'running' ? 'Testing...' : '[Esc] Back'}</Text></Box>
-      </Box>
-    );
-  }
-
-  // Setup render
   const showList = mode === 'single' || batchStrategy === 'unified';
+  const targets = mode === 'batch' ? profiles.filter(p => checked[p.id]) : [profiles[profileIdx]].filter(Boolean);
+  const okN = targets.filter(p => testResults[p.id] === 'ok').length;
+  const failN = targets.filter(p => testResults[p.id] === 'fail').length;
+
   return (
     <Box flexDirection="column" padding={1}>
       <Box marginBottom={1} gap={2}>
@@ -256,64 +252,101 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
               const res = testResults[p.id];
               return (
                 <Box key={p.id} gap={1}>
-                  {focus === 'left' && hl ? <Text color={colors.primary}>{symbols.arrow}</Text> : <Text> </Text>}
-                  {mode === 'batch' && <Text color={checked[p.id] ? colors.success : colors.dim}>[{checked[p.id] ? 'x' : ' '}]</Text>}
-                  {res === 'ok' && <Text color={colors.success}>{symbols.check}</Text>}
-                  {res === 'fail' && <Text color={colors.danger}>{symbols.cross}</Text>}
-                  {res === 'running' && <Text color={colors.warning}>{symbols.circle}</Text>}
-                  <Text color={hl && focus === 'left' ? colors.text : colors.muted} wrap="truncate-end">{p.name}</Text>
-                  {(res === 'ok' || res === 'fail') && <Text color={colors.dim}>{fmtDur(p.id)}</Text>}
+                  <Text wrap="truncate-end">
+                    {focus === 'left' && hl ? <Text color={colors.primary}>{`${symbols.arrow} `}</Text> : <Text>{'  '}</Text>}
+                    {mode === 'batch' && <Text color={checked[p.id] ? colors.success : colors.dim}>{`[${checked[p.id] ? 'x' : ' '}] `}</Text>}
+                    <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '  '}</Text>
+                    {res === 'ok' && <Text color={colors.success}>{`${symbols.check} `}</Text>}
+                    {res === 'fail' && <Text color={colors.danger}>{`${symbols.cross} `}</Text>}
+                    {res === 'running' && <Text color={colors.warning}>{`${spinnerFrame} `}</Text>}
+                    <Text color={hl && focus === 'left' ? colors.text : colors.muted}>{p.name}</Text>
+                    {(res === 'ok' || res === 'fail') && <Text color={colors.dim}>{fmtDur(p.id)}</Text>}
+                  </Text>
                 </Box>
               );
             })}
           </Box>
         </Box>
 
-        {/* Right: Model + Strategy */}
+        {/* Right: Model + Strategy OR Running Status */}
         <Box flexDirection="column" flexGrow={1} padding={1} paddingLeft={2}>
-          {mode === 'batch' && (
-            <Box marginBottom={1} gap={2}>
-              <Text color={batchStrategy === 'unified' ? colors.primary : colors.dim} bold={batchStrategy === 'unified'}>[u] Unified Model</Text>
-              <Text color={batchStrategy === 'individual' ? colors.primary : colors.dim} bold={batchStrategy === 'individual'}>[i] Per-profile</Text>
-            </Box>
-          )}
-          {showList && !customInput && (
+          {phase === 'setup' ? (
             <>
-              <Text color={colors.muted} bold>Model:</Text>
-              <Box marginTop={1} flexDirection="column">
-                {modelItems.map((item, i) => {
-                  const hl = i === modelIdx && focus === 'right';
-                  return (
-                    <Box key={`${item.value}-${i}`} gap={1}>
-                      <Text color={hl ? colors.primary : colors.dim}>{hl ? symbols.arrow : ' '}</Text>
-                      <Text color={hl ? colors.text : colors.muted} italic={item.value === '__custom__'}>{item.label}</Text>
-                    </Box>
-                  );
-                })}
-              </Box>
+              {mode === 'batch' && (
+                <Box marginBottom={1} gap={2}>
+                  <Text color={batchStrategy === 'unified' ? colors.primary : colors.dim} bold={batchStrategy === 'unified'}>[u] Unified Model</Text>
+                  <Text color={batchStrategy === 'individual' ? colors.primary : colors.dim} bold={batchStrategy === 'individual'}>[i] Per-profile</Text>
+                </Box>
+              )}
+              {showList && !customInput && (
+                <>
+                  <Text color={colors.muted} bold>Model:</Text>
+                  <Box marginTop={1} flexDirection="column">
+                    {modelItems.map((item, i) => {
+                      const hl = i === modelIdx && focus === 'right';
+                      return (
+                        <Box key={`${item.value}-${i}`} gap={1}>
+                          <Text color={hl ? colors.primary : colors.dim}>{hl ? symbols.arrow : ' '}</Text>
+                          <Text color={hl ? colors.text : colors.muted} italic={item.value === '__custom__'}>{item.label}</Text>
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                </>
+              )}
+              {customInput && (
+                <Box gap={1} marginTop={1}>
+                  <Text color={colors.primary}>{symbols.arrow} Model:</Text>
+                  <TextInput value={customModel} onChange={setCustomModel} onSubmit={(val: string) => {
+                    setCustomInput(false);
+                    if (val) setCustomModel(val);
+                    if (mode === 'single') startSingleTest(val || fallback);
+                    else startBatchTest(val || fallback);
+                  }} placeholder="e.g. gpt-5.4" />
+                </Box>
+              )}
+              {mode === 'batch' && batchStrategy === 'individual' && (
+                <Box flexDirection="column" marginTop={1}>
+                  <Text color={colors.secondary}>Each profile uses its configured model</Text>
+                  <Text color={colors.dim}>(Fallback: {fallback})</Text>
+                </Box>
+              )}
             </>
-          )}
-          {customInput && (
-            <Box gap={1} marginTop={1}>
-              <Text color={colors.primary}>{symbols.arrow} Model:</Text>
-              <TextInput value={customModel} onChange={setCustomModel} onSubmit={(val) => {
-                setCustomInput(false);
-                if (val) setCustomModel(val);
-                if (mode === 'single') startSingleTest(val || fallback);
-              }} placeholder="e.g. gpt-5.4" />
-            </Box>
-          )}
-          {mode === 'batch' && batchStrategy === 'individual' && (
-            <Box flexDirection="column" marginTop={1}>
-              <Text color={colors.secondary}>Each profile uses its configured model</Text>
-              <Text color={colors.dim}>(Fallback: {fallback})</Text>
+          ) : (
+            <Box flexDirection="column">
+              <Text color={colors.text} bold>{mode === 'batch' ? 'Batch Testing' : 'Testing'} {mode === 'single' ? profiles[profileIdx]?.name : `${targets.length} profiles`}</Text>
+              
+              {mode === 'batch' && (
+                <Box marginTop={1} gap={2}>
+                  <Text color={colors.primary}>[ Total: {targets.length} ]</Text>
+                  <Text color={colors.success}>{symbols.check} OK: {okN}</Text>
+                  <Text color={colors.danger}>{symbols.cross} Fail: {failN}</Text>
+                  <Text color={colors.warning}>{symbols.circle} Pending: {targets.length - okN - failN}</Text>
+                </Box>
+              )}
+
+              {mode === 'single' ? (
+                <Box flexDirection="column" marginTop={1}>
+                  {singleOutput ? singleOutput.trim().split('\n').filter(Boolean).slice(-15).map((line, i) => (
+                    <Text key={i} color={phase === 'running' ? colors.muted : (testResults[profiles[profileIdx]?.id] === 'ok' ? colors.secondary : colors.text)} wrap="truncate-end">{line}</Text>
+                  )) : (
+                    <Text color={colors.dim}>[Waiting for output...]</Text>
+                  )}
+                </Box>
+              ) : (
+                <Box marginTop={1} flexDirection="column">
+                  <Text color={colors.dim}>Testing in progress. Check left panel for status.</Text>
+                </Box>
+              )}
             </Box>
           )}
         </Box>
       </Box>
 
       <Box marginTop={1} gap={2} flexWrap="wrap">
-        {mode === 'single' ? (
+        {phase !== 'setup' ? (
+          <Text color={colors.dim}>{phase === 'running' ? '[Esc] Cancel' : '[Esc] Back'}</Text>
+        ) : mode === 'single' ? (
           <>
             <Text color={colors.dim}>[Enter] Test</Text>
             <Text color={colors.dim}>[b] Batch mode</Text>

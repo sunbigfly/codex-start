@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { nanoid } from 'nanoid';
 import { parse, stringify } from 'smol-toml';
 import type { Profile, AppStore, AppHistoryEntry } from './types.js';
-import { maskApiKey } from './utils.js';
+
 
 const STORE_DIR = join(homedir(), '.codex-start');
 const STORE_FILE = join(STORE_DIR, 'data.json');
@@ -42,7 +42,7 @@ export function ensureBackup(store: AppStore): AppStore {
 }
 
 export function createProfile(data: Omit<Profile, 'id' | 'createdAt'>): Profile {
-  return { ...data, id: nanoid(8), createdAt: new Date().toISOString() };
+  return { ...data, id: nanoid(8), createdAt: new Date().toISOString() } as Profile;
 }
 
 /** 克隆一个 profile，生成新 ID 并在名称后加 (copy) */
@@ -60,7 +60,7 @@ export function cloneProfile(source: Profile): Profile {
 export function exportProfiles(profiles: Profile[]): string {
   const safe = profiles.map(p => ({
     ...p,
-    api_key: maskApiKey(p.api_key),
+    api_key: p.api_key ? '********' : '',
   }));
   return JSON.stringify(safe, null, 2);
 }
