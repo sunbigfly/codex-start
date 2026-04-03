@@ -6,12 +6,30 @@ import { spawn } from 'node:child_process';
 import { ConfigUI } from './components/ConfigUI.js';
 import { loadStore, saveStore, ensureBackup, createProfile, readCurrentConfig, cloneProfile, exportProfiles, importProfiles } from './store.js';
 import { injectProfile, buildLaunchArgs, restoreBackup } from './injector.js';
-import { colors, symbols } from './theme.js';
+import { colors, symbols, applyTheme, themeOptions } from './theme.js';
 import { fuzzyMatch } from './utils.js';
 import type { Profile, AppStore } from './types.js';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import omelette from 'omelette';
+
+const comp = omelette('cs|codex-start <action> <profile>');
+comp.on('action', ({ reply }) => {
+  reply(['run', 'list', 'config', 'test', 'add', 'export', 'import', '--setup-completion']);
+});
+comp.on('profile', ({ reply, line }) => {
+  if (line.includes(' run ')) {
+    try {
+      const store = loadStore();
+      const names = store.profiles.map(p => p.name);
+      reply(names.map(n => n.includes(' ') ? `"${n}"` : n));
+    } catch { reply([]); }
+  } else {
+    reply([]);
+  }
+});
+comp.init();
 
 // --- 启动信息打印 ---
 
@@ -72,6 +90,14 @@ function handleCli(): boolean {
     }
     launchCodex(store.profiles[matches[0]]);
     return true;
+  }
+
+  // cs --setup-completion
+  if (cmd === '--setup-completion') {
+    comp.setupShellInitFile();
+    console.log('\n  \x1b[32mAuto-completion setup successfully!\x1b[0m');
+    console.log('  Please restart your terminal or run \x1b[36msource ~/.zshrc\x1b[0m (or equivalent) to apply.\n');
+    process.exit(0);
   }
 
   // cs export
@@ -238,6 +264,17 @@ function ListApp() {
         saveStore(updated);
         showToast(`"${store.profiles[idx].name}" 已上移`);
       }
+    }
+    if (input === 'W') {
+      const currentTheme = store.globalTheme || 'mocha';
+      const idx = themeOptions.indexOf(currentTheme);
+      const nextTheme = themeOptions[(idx + 1) % themeOptions.length];
+      const updated = { ...store, globalTheme: nextTheme };
+      applyTheme(nextTheme);
+      setStore(updated);
+      saveStore(updated);
+      showToast(`Theme: ${nextTheme}`);
+      return;
     }
   });
 
@@ -414,7 +451,7 @@ function ListApp() {
         <Text color={colors.dim}>[Enter] Launch</Text>
         <Text color={colors.dim}>[e] Edit  [a] Add  [c] Clone</Text>
         <Text color={colors.dim}>[t] Test  [x] Export  [/] Search</Text>
-        <Text color={colors.dim}>[J/K] Reorder  [Space] Default  [Esc] Exit</Text>
+        <Text color={colors.dim}>[J/K] Reorder  [Space] Default  [W] Theme  [Esc] Exit</Text>
       </Box>
     </Box>
   );
@@ -445,6 +482,9 @@ function ConfigApp({ cmd, editId }: { cmd: string; editId?: string }) {
 // --- Entry Point ---
 
 async function main() {
+  const initialStore = ensureBackup(loadStore());
+  if (initialStore.globalTheme) applyTheme(initialStore.globalTheme);
+
   if (handleCli()) return;
 
   const cmd = process.argv[2] || 'config';

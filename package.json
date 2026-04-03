@@ -4,15 +4,16 @@
   "description": "Interactive TUI manager for Codex API profiles",
   "type": "module",
   "bin": {
-    "cs": "./bin/cs.js",
-    "codex-start": "./bin/cs.js"
+    "cs": "./dist/app.js",
+    "codex-start": "./dist/app.js"
   },
   "files": [
-    "bin",
-    "src"
+    "dist"
   ],
   "scripts": {
-    "dev": "node bin/cs.js"
+    "dev": "tsx src/app.tsx",
+    "build": "tsup",
+    "start": "node dist/app.js"
   },
   "dependencies": {
     "ink": "^5.0.0",
@@ -20,12 +21,17 @@
     "ink-table": "^3.0.0",
     "ink-text-input": "^6.0.0",
     "nanoid": "^5.0.9",
+    "omelette": "^0.4.17",
     "react": "^18.3.1",
-    "smol-toml": "^1.3.0",
-    "tsx": "^4.19.0"
+    "smol-toml": "^1.3.0"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
-    "@types/react": "^18.3.12"
+    "@types/omelette": "^0.4.5",
+    "@types/react": "^18.3.12",
+    "cross-env": "^10.1.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
   }
 }

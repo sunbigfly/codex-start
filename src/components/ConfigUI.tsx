@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
-import { colors, symbols } from '../theme.js';
+import { colors, symbols, applyTheme, themeOptions } from '../theme.js';
 import type { Profile, AppStore } from '../types.js';
 import { readCurrentConfig, createProfile, pushHistory, saveGlobalConfigField, cloneProfile, exportProfiles } from '../store.js';
 import { OVERRIDE_FIELDS, getGlobalVal } from './config/constants.js';
@@ -180,6 +180,16 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
     // Shift+方向键移动 profile 顺序 (用 J/K)
     if (input === 'J' && selected) { moveProfile(1); return; }
     if (input === 'K' && selected) { moveProfile(-1); return; }
+    if (input === 'W') {
+      const currentTheme = store.globalTheme || 'mocha';
+      const idx = themeOptions.indexOf(currentTheme);
+      const nextTheme = themeOptions[(idx + 1) % themeOptions.length];
+      const updated = { ...store, globalTheme: nextTheme };
+      applyTheme(nextTheme);
+      onUpdate(updated);
+      showToast(`Theme: ${nextTheme}`, 'success');
+      return;
+    }
     if ((key.return || key.rightArrow) && selected) { setFocusState('right'); return; }
   });
 
@@ -397,7 +407,7 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
             <Text color={colors.dim}>[a] Add  [c] Clone  [d] Delete</Text>
             <Text color={colors.dim}>[t] Test  [x] Export</Text>
             <Text color={colors.dim}>[h] History</Text>
-            <Text color={colors.dim}>[J/K] Reorder  [l] Lang  [Space] Default  [Esc] Exit</Text>
+            <Text color={colors.dim}>[J/K] Reorder  [l] Lang  [Space] Default  [W] Theme  [Esc] Exit</Text>
           </Box>
         ) : (
           <Box gap={2}>

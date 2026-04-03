@@ -46,6 +46,7 @@ export interface AppStore {
   testResults?: Record<string, string>;
   /** 每个 profile 最后一次测试的耗时 (ms) */
   testDurations?: Record<string, number>;
+  globalTheme?: string;
 }
 
 export type View = 'main' | 'list' | 'config' | 'add' | 'edit' | 'test';
