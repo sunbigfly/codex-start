@@ -173,7 +173,7 @@ export function ListUI({ store, onUpdate, onAction }: Props) {
 
       <Box borderStyle="round" borderColor={colors.dim} flexDirection="row" width="100%">
         {/* Left: profile list */}
-        <Box flexDirection="column" width={computeNavWidth(store.profiles.map(p => p.name), 6)} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} borderColor={colors.dim} padding={1} paddingRight={2}>
+        <Box flexDirection="column" width={computeNavWidth(store.profiles.map(p => p.name), 9, 7)} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} borderColor={colors.dim} padding={1} paddingRight={2}>
           <Text color={colors.muted} bold> Profiles</Text>
 
           {searchMode && (
@@ -192,8 +192,14 @@ export function ListUI({ store, onUpdate, onAction }: Props) {
                   <Box key={p.id}>
                     <Text>
                       <Text color={i === 0 ? colors.primary : colors.dim}>{i === 0 ? `${symbols.arrow} ` : '  '}</Text>
-                      <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '  '}</Text>
+                      <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '   '}</Text>
+                      <Text>
+                        {store.testResults && store.testResults[p.id] === 'ok' ? <Text color={colors.success}>{`${symbols.check} `}</Text> :
+                         store.testResults && store.testResults[p.id] === 'fail' ? <Text color={colors.danger}>{`${symbols.cross} `}</Text> :
+                         <Text>{'  '}</Text>}
+                      </Text>
                       <Text color={i === 0 ? colors.text : colors.muted}>{p.name}</Text>
+                      {store.testResults && (store.testResults[p.id] === 'ok' || store.testResults[p.id] === 'fail') && <Text color={colors.dim}> {store.testDurations && store.testDurations[p.id] ? `${(store.testDurations[p.id]/1000).toFixed(1)}s` : ''}</Text>}
                     </Text>
                   </Box>
                 ))
@@ -214,8 +220,14 @@ export function ListUI({ store, onUpdate, onAction }: Props) {
                   return (
                     <Box>
                       <Text>
-                        <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '  '}</Text>
+                        <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '   '}</Text>
+                        <Text>
+                          {store.testResults && store.testResults[p.id] === 'ok' ? <Text color={colors.success}>{`${symbols.check} `}</Text> :
+                           store.testResults && store.testResults[p.id] === 'fail' ? <Text color={colors.danger}>{`${symbols.cross} `}</Text> :
+                           <Text>{'  '}</Text>}
+                        </Text>
                         <Text color={isSelected ? colors.text : colors.muted} bold={isSelected}>{p.name}</Text>
+                        {store.testResults && (store.testResults[p.id] === 'ok' || store.testResults[p.id] === 'fail') && <Text color={colors.dim}> {store.testDurations && store.testDurations[p.id] ? `${(store.testDurations[p.id]/1000).toFixed(1)}s` : ''}</Text>}
                       </Text>
                     </Box>
                   );

@@ -27,7 +27,6 @@ export function FieldEditor({
 }) {
   const [textVal, setTextVal] = useState(currentValue);
   const [isCustom, setIsCustom] = useState(false);
-  const [urlWarning, setUrlWarning] = useState(false);
   const [fetchedModels, setFetchedModels] = useState<string[] | null>(null);
   const [fetchStatus, setFetchStatus] = useState<'idle' | 'loading' | 'error'>('idle');
 
@@ -100,7 +99,10 @@ export function FieldEditor({
             <Text color={colors.primary}>{symbols.arrow}</Text>
             <TextInput value={textVal} onChange={setTextVal} onSubmit={() => { onSave(textVal); setIsCustom(false); }} placeholder="Custom value..." />
           </Box>
-          <Text color={colors.dim}>  [Enter] Save  [Esc] Cancel</Text>
+          <Box gap={2} flexWrap="wrap">
+            <Text color={colors.dim}>[Enter] Save</Text>
+            <Text color={colors.dim}>[Esc] Cancel</Text>
+          </Box>
         </Box>
       );
     }
@@ -259,19 +261,20 @@ export function FieldEditor({
       {globalValue && <Text color={colors.placeholder}>  Global: {globalValue}</Text>}
       <Box gap={1}>
         <Text color={colors.primary}>{symbols.arrow}</Text>
-        <TextInput value={textVal} onChange={(v) => { setTextVal(v); setUrlWarning(false); }} onSubmit={() => {
+        <TextInput value={textVal} onChange={setTextVal} onSubmit={() => {
           let val = textVal.trim();
           if (field.key === 'base_url' && val && val.match(/^https?:\/\//) && !val.endsWith('/v1')) {
             val = val.replace(/\/+$/, '') + '/v1';
             setTextVal(val);
-            setUrlWarning(true);
-            return;
           }
           onSave(val);
         }} placeholder={globalValue || 'empty = use global'} />
       </Box>
-      <Text color={colors.dim}>  [Enter] Save  [Esc] Cancel  (empty = use global value)</Text>
-      {urlWarning && <Text color={colors.warning}>  [!] 已自动补全 /v1 后缀，请再次按下 [Enter] 确认</Text>}
+      <Box gap={2} flexWrap="wrap">
+        <Text color={colors.dim}>[Enter] Save</Text>
+        <Text color={colors.dim}>[Esc] Cancel</Text>
+        <Text color={colors.dim}>(empty = use global value)</Text>
+      </Box>
     </Box>
   );
 }

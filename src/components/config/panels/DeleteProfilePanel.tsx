@@ -26,8 +26,9 @@ export function DeleteProfilePanel({
       <Box marginTop={1} gap={1} flexDirection="column">
         <Text color={colors.warning}>Are you sure you want to delete profile "{profile.name}"?</Text>
       </Box>
-      <Box marginTop={1}>
-        <Text color={colors.dim}>[y/Enter] Confirm  [n/Esc] Cancel</Text>
+      <Box marginTop={1} gap={2} flexWrap="wrap">
+        <Text color={colors.dim}>[y/Enter] Confirm</Text>
+        <Text color={colors.dim}>[n/Esc] Cancel</Text>
       </Box>
     </Box>
   );

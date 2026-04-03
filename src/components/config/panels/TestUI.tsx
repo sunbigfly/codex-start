@@ -356,10 +356,13 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
                   <Text>
                     {focus === 'left' && hl ? <Text color={colors.primary}>{`${symbols.arrow} `}</Text> : <Text>{'  '}</Text>}
                     {mode === 'batch' && <Text color={checked[p.id] ? colors.success : colors.dim}>{`[${checked[p.id] ? 'x' : ' '}] `}</Text>}
-                    <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '  '}</Text>
-                    {res === 'ok' && <Text color={colors.success}>{`${symbols.check} `}</Text>}
-                    {res === 'fail' && <Text color={colors.danger}>{`${symbols.cross} `}</Text>}
-                    {res === 'running' && <Text color={colors.warning}>{`${spinnerFrame} `}</Text>}
+                    <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '   '}</Text>
+                    <Text>
+                      {res === 'ok' ? <Text color={colors.success}>{`${symbols.check} `}</Text> :
+                       res === 'fail' ? <Text color={colors.danger}>{`${symbols.cross} `}</Text> :
+                       res === 'running' ? <Text color={colors.warning}>{`${spinnerFrame} `}</Text> :
+                       <Text>{'  '}</Text>}
+                    </Text>
                     <Text color={hl && focus === 'left' ? colors.text : colors.muted}>{p.name}</Text>
                     {(res === 'ok' || res === 'fail') && <Text color={colors.dim}>{fmtDur(p.id)}</Text>}
                   </Text>
@@ -422,23 +425,31 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
                   <Text color={colors.primary}>[ Total: {targets.length} ]</Text>
                   <Text color={colors.success}>{symbols.check} OK: {okN}</Text>
                   <Text color={colors.danger}>{symbols.cross} Fail: {failN}</Text>
-                  <Text color={colors.accent}>{spinnerFrame} Running: {runningN}</Text>
-                  <Text color={colors.warning}>{symbols.circle} Pending: {pendingN}</Text>
+                  {runningN > 0 && <Text color={colors.accent}>{spinnerFrame} Running: {runningN}</Text>}
+                  {pendingN > 0 && <Text color={colors.warning}>{symbols.circle} Pending: {pendingN}</Text>}
                 </Box>
               )}
 
               {mode === 'single' ? (
-                <Box flexDirection="column" marginTop={1} minHeight={15}>
-                  {singleOutput ? singleOutput.trim().split('\n').filter(Boolean).slice(-15).map((line, i) => {
-                    const safeLine = line.length > 90 ? line.slice(0, 87) + '...' : line;
-                    return (
-                      <Text key={i} color={phase === 'running' ? colors.muted : (testResults[profiles[profileIdx]?.id] === 'ok' ? colors.secondary : colors.text)} wrap="truncate-end">
-                        {safeLine}
+                <Box flexDirection="column" marginTop={1} padding={1} borderStyle="single" borderColor={colors.darkBorder}>
+                  <Text color={colors.muted} bold>Live Task Logs</Text>
+                  <Box flexDirection="column" marginTop={1} gap={1}>
+                    <Box flexDirection="column" minHeight={15}>
+                      <Text color={phase === 'running' ? colors.text : colors.dim}>
+                        {phase === 'running' ? `${spinnerFrame} ` : '  '}<Text color={colors.primary} bold>[{profiles[profileIdx]?.name}]</Text>
                       </Text>
-                    );
-                  }) : (
-                    <Text color={colors.dim}>[Waiting for output...]</Text>
-                  )}
+                      {singleOutput ? singleOutput.trim().split('\n').filter(Boolean).slice(-15).map((line, i) => {
+                        const safeLine = line.length > 80 ? line.slice(0, 77) + '...' : line;
+                        return (
+                          <Text key={i} color={phase === 'running' ? colors.muted : (testResults[profiles[profileIdx]?.id] === 'ok' ? colors.secondary : colors.text)} wrap="truncate-end">
+                            {`    ${safeLine}`}
+                          </Text>
+                        );
+                      }) : (
+                        <Text color={colors.dim}>{`    [Waiting for output...]`}</Text>
+                      )}
+                    </Box>
+                  </Box>
                 </Box>
               ) : (
                 <Box flexDirection="column" marginTop={1} padding={1} borderStyle="single" borderColor={colors.darkBorder}>
@@ -452,14 +463,14 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
                       return (
                         <Box key={p.id} flexDirection="column" minHeight={5}>
                           <Text color={isRunning ? colors.text : colors.dim}>
-                            {isRunning ? `${spinnerFrame} ` : '  '} <Text color={colors.primary} bold>[{p.name}]</Text> 
+                            {isRunning ? `${spinnerFrame} ` : '  '}<Text color={colors.primary} bold>[{p.name}]</Text> 
                           </Text>
                           {lines.map((l, idx) => {
-                             // 切断 80 确保哪怕没有 Ink 原生保护终端，也不会自动变长软换行抖动
+                             // 切断 80 确保哪怕没有 Ink 原生保护终端，也不会自动变长软换行软换行抖动
                              const safeLine = l.length > 80 ? l.slice(0, 77) + '...' : l;
                              return (
                                <Text key={idx} color={colors.dim} wrap="truncate-end">
-                                 {`  ${safeLine}`}
+                                 {`    ${safeLine}`}
                                </Text>
                              );
                           })}
@@ -487,8 +498,10 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
         ) : (
           <>
             <Text color={colors.dim}>[Enter] Run batch</Text>
-            <Text color={colors.dim}>[Space] Toggle  [a] All</Text>
-            <Text color={colors.dim}>[b] Single mode  [u/i] Strategy</Text>
+            <Text color={colors.dim}>[Space] Toggle</Text>
+            <Text color={colors.dim}>[a] All</Text>
+            <Text color={colors.dim}>[b] Single mode</Text>
+            <Text color={colors.dim}>[u/i] Strategy</Text>
             <Text color={colors.dim}>[Esc] Back</Text>
           </>
         )}

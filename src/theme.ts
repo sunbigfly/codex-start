@@ -95,7 +95,7 @@ export const symbols = {
   circle: '\u25CB',
   line: '\u2500',
   pipe: '\u2502',
-  star: '\u2605',
+  star: '🌟',
   required: '*',
   corner_tl: '\u256D',
   corner_tr: '\u256E',

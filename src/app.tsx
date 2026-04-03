@@ -16,7 +16,7 @@ import omelette from 'omelette';
 
 const comp = omelette('cs|codex-start <action> <profile>');
 comp.on('action', ({ reply }) => {
-  reply(['run', 'list', 'config', 'test', 'add', 'export', 'import', '--setup-completion']);
+  reply(['run', 'list', 'config', 'test', 'add', 'export', 'import', 'help', '--setup-completion']);
 });
 comp.on('profile', ({ reply, line }) => {
   if (line.includes(' run ')) {
@@ -80,6 +80,27 @@ function launchCodex(profile: Profile) {
 }
 
 // --- CLI 命令路由（非 TUI，直接 console 输出） ---
+
+function printHelp() {
+  const lines = [
+    ['cs', 'Launch default profile'],
+    ['cs list', 'Interactive profile list'],
+    ['cs <N>', 'Launch profile by number'],
+    ['cs run <name>', 'Launch profile by name'],
+    ['cs config', 'Open config manager'],
+    ['cs add', 'Add new profile'],
+    ['cs test', 'Test connectivity'],
+    ['cs export [file]', 'Export profiles'],
+    ['cs import <file>', 'Import profiles'],
+    ['cs help', 'Show this help message']
+  ];
+
+  console.log('  Usage:');
+  for (const [cmd, desc] of lines) {
+    console.log(`    \x1b[36m${cmd.padEnd(17, ' ')}\x1b[0m ${desc}`);
+  }
+  console.log('');
+}
 
 function handleCli(): boolean {
   const args = process.argv.slice(2);
@@ -179,17 +200,14 @@ function handleCli(): boolean {
     return true;
   }
 
+  if (cmd === '-h' || cmd === '--help' || cmd === 'help') {
+    console.log('');
+    printHelp();
+    return true;
+  }
+
   console.log(`\n  \x1b[31mUnknown command:\x1b[0m ${cmd}`);
-  console.log('  Usage:');
-  console.log('    \x1b[36mcs\x1b[0m              Launch default profile');
-  console.log('    \x1b[36mcs list\x1b[0m          Interactive profile list');
-  console.log('    \x1b[36mcs <N>\x1b[0m           Launch profile by number');
-  console.log('    \x1b[36mcs run <name>\x1b[0m    Launch profile by name');
-  console.log('    \x1b[36mcs config\x1b[0m        Open config manager');
-  console.log('    \x1b[36mcs add\x1b[0m           Add new profile');
-  console.log('    \x1b[36mcs test\x1b[0m          Test connectivity');
-  console.log('    \x1b[36mcs export [file]\x1b[0m Export profiles');
-  console.log('    \x1b[36mcs import <file>\x1b[0m Import profiles\n');
+  printHelp();
   return true;
 }
 

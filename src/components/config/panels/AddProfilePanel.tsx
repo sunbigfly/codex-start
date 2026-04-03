@@ -15,7 +15,6 @@ export function AddProfilePanel({
   const [addUrl, setAddUrl] = useState('');
   const [addKey, setAddKey] = useState('');
   const [addName, setAddName] = useState('');
-  const [urlWarning, setUrlWarning] = useState('');
 
   useInput((input, key) => {
     if (key.escape) onCancel();
@@ -31,18 +30,15 @@ export function AddProfilePanel({
             <Text color={colors.text}>{'API Base URL:'.padEnd(16)}</Text>
             {addStep === 0 ? (
               <Box flexDirection="column">
-                <TextInput value={addUrl} onChange={(v) => { setAddUrl(v); setUrlWarning(''); }} onSubmit={() => { 
+                <TextInput value={addUrl} onChange={setAddUrl} onSubmit={() => { 
                   let finalUrl = addUrl.trim();
                   if (!finalUrl) return;
                   if (finalUrl.match(/^https?:\/\//) && !finalUrl.endsWith('/v1')) {
                     finalUrl = finalUrl.replace(/\/+$/, '') + '/v1';
                     setAddUrl(finalUrl);
-                    setUrlWarning('已自动补全 /v1 后缀，请再次按下 [Enter] 确认 (Auto appended /v1)');
-                    return;
                   }
                   setAddStep(1); 
                 }} placeholder="https://api.openai.com/v1" />
-                {urlWarning && <Text color={colors.warning}>[!] {urlWarning}</Text>}
               </Box>
             ) : (
               <Text color={colors.secondary}>{addUrl}</Text>
@@ -79,7 +75,10 @@ export function AddProfilePanel({
           </Box>
         )}
       </Box>
-      <Box marginTop={1}><Text color={colors.dim}>[Enter] Next  [Esc] Cancel</Text></Box>
+      <Box marginTop={1} gap={2} flexWrap="wrap">
+        <Text color={colors.dim}>[Enter] Next</Text>
+        <Text color={colors.dim}>[Esc] Cancel</Text>
+      </Box>
     </Box>
   );
 }

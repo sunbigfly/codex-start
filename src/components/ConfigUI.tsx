@@ -340,10 +340,13 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
                   return (
                     <Box>
                       <Text>
-                        <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '  '}</Text>
-                        {res === 'ok' && <Text color={colors.success}>{`${symbols.check} `}</Text>}
-                        {res === 'fail' && <Text color={colors.danger}>{`${symbols.cross} `}</Text>}
-                        {res === 'running' && <Text color={colors.warning}>{`${symbols.circle} `}</Text>}
+                        <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '   '}</Text>
+                        <Text>
+                          {res === 'ok' ? <Text color={colors.success}>{`${symbols.check} `}</Text> :
+                           res === 'fail' ? <Text color={colors.danger}>{`${symbols.cross} `}</Text> :
+                           res === 'running' ? <Text color={colors.warning}>{`${symbols.circle} `}</Text> :
+                           <Text>{'  '}</Text>}
+                        </Text>
                         <Text color={isSelected ? colors.text : colors.muted}>{p.name}</Text>
                       </Text>
                     </Box>
@@ -361,10 +364,13 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
                     <Box key={p.id}>
                       <Text>
                         <Text color={isSelected ? colors.primary : colors.dim}>{isSelected ? `${symbols.arrow} ` : '  '}</Text>
-                        <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '  '}</Text>
-                        {res === 'ok' && <Text color={colors.success}>{`${symbols.check} `}</Text>}
-                        {res === 'fail' && <Text color={colors.danger}>{`${symbols.cross} `}</Text>}
-                        {res === 'running' && <Text color={colors.warning}>{`${symbols.circle} `}</Text>}
+                        <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '   '}</Text>
+                        <Text>
+                          {res === 'ok' ? <Text color={colors.success}>{`${symbols.check} `}</Text> :
+                           res === 'fail' ? <Text color={colors.danger}>{`${symbols.cross} `}</Text> :
+                           res === 'running' ? <Text color={colors.warning}>{`${symbols.circle} `}</Text> :
+                           <Text>{'  '}</Text>}
+                        </Text>
                         <Text color={colors.muted}>{p.name}</Text>
                       </Text>
                     </Box>
@@ -406,17 +412,27 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
         return focusState === 'left' ? (
           <Box gap={2} flexWrap="wrap">
             <Text color={colors.dim}>{'[Enter/\u2192] Edit'}</Text>
-            <Text color={colors.dim}>[a] Add  [c] Clone  [d] Delete</Text>
-            <Text color={colors.dim}>[t] Test  [x] Export</Text>
+            <Text color={colors.dim}>[a] Add</Text>
+            <Text color={colors.dim}>[c] Clone</Text>
+            <Text color={colors.dim}>[d] Delete</Text>
+            <Text color={colors.dim}>[t] Test</Text>
+            <Text color={colors.dim}>[x] Export</Text>
             <Text color={colors.dim}>[h] History</Text>
-            <Text color={colors.dim}>[J/K] Reorder  [l] Lang  [Space] Default  [W] Theme  [Esc] Exit</Text>
+            <Text color={colors.dim}>[J/K] Reorder</Text>
+            <Text color={colors.dim}>[Space] Default</Text>
+            <Text color={colors.dim}>[W] Theme</Text>
+            <Text color={colors.dim}>[l] Lang</Text>
+            <Text color={colors.dim}>[Esc] Exit</Text>
           </Box>
         ) : (
-          <Box gap={2}>
-            <Text color={colors.dim}>{'[Enter/\u2192] Edit value'}</Text>
-            <Text color={colors.dim}>[g] Save to Global  [p] Preview</Text>
-            <Text color={colors.dim}>[Up/Down] Navigate  [Tab] Jump Category</Text>
-            <Text color={colors.dim}>{'[l] Language  [Esc/\u2190] Back'}</Text>
+          <Box gap={2} flexWrap="wrap">
+            <Text color={colors.dim}>{'[Enter/\u2192] Edit'}</Text>
+            <Text color={colors.dim}>[g] Save to Global</Text>
+            <Text color={colors.dim}>[p] Preview</Text>
+            <Text color={colors.dim}>[Up/Down] Navigate</Text>
+            <Text color={colors.dim}>[Tab] Jump Category</Text>
+            <Text color={colors.dim}>[l] Language</Text>
+            <Text color={colors.dim}>{'[Esc/\u2190] Back'}</Text>
           </Box>
         );
       })()}
