@@ -11,24 +11,8 @@ import type { Profile, AppStore } from './types.js';
 // ─── 启动信息打印 ───────────────────────────────
 
 function printLaunchInfo(profile: Profile) {
-  const args = buildLaunchArgs(profile);
-  const w = 44;
-  console.log('');
-  console.log(`  ${symbols.corner_tl}${symbols.line.repeat(w)}${symbols.corner_tr}`);
-  console.log(`  ${symbols.pipe} \x1b[1;35mCodex Start\x1b[0m`);
-  console.log(`  ${symbols.pipe}${symbols.dash.repeat(w)}${symbols.pipe}`);
-  console.log(`  ${symbols.pipe}  Profile:   \x1b[36m${profile.name}\x1b[0m`);
-  console.log(`  ${symbols.pipe}  URL:       \x1b[90m${profile.base_url}\x1b[0m`);
-  if (profile.model) console.log(`  ${symbols.pipe}  Model:     \x1b[36m${profile.model}\x1b[0m`);
-  if (profile.approval_policy) console.log(`  ${symbols.pipe}  Approval:  \x1b[33m${profile.approval_policy}\x1b[0m`);
-  if (profile.sandbox_mode) console.log(`  ${symbols.pipe}  Sandbox:   \x1b[33m${profile.sandbox_mode}\x1b[0m`);
-  if (profile.personality) console.log(`  ${symbols.pipe}  Persona:   \x1b[32m${profile.personality}\x1b[0m`);
-  if (profile.web_search && profile.web_search !== 'disabled') {
-    console.log(`  ${symbols.pipe}  Search:    \x1b[33m${profile.web_search}\x1b[0m`);
-  }
-  if (args.length > 0) console.log(`  ${symbols.pipe}  Args:      \x1b[90mcodex ${args.join(' ')}\x1b[0m`);
-  console.log(`  ${symbols.corner_bl}${symbols.line.repeat(w)}${symbols.corner_br}`);
-  console.log(`\n  \x1b[35m${symbols.arrow}\x1b[0m Launching codex...\n`);
+  const modelStr = profile.model ? ` | ${profile.model}` : '';
+  console.log(`\x1b[90m  ${symbols.arrow} Launching codex (${profile.name}${modelStr})\x1b[0m`);
 }
 
 function launchCodex(profile: Profile) {
