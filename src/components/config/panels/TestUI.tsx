@@ -72,7 +72,7 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
       restoreBackup(store.backup);
       injectProfile({ ...profile, model });
 
-      const child = spawn('codex', ['exec', 'Reply with exactly: CONNECTIVITY_OK'], { stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn('codex', ['exec', 'Reply with exactly: CONNECTIVITY_OK', '--skip-git-repo-check'], { stdio: ['ignore', 'pipe', 'pipe'] });
       let stdout = '', stderr = '';
       let finished = false;
 
