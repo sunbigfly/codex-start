@@ -4,6 +4,7 @@ import SelectInput from 'ink-select-input';
 import { colors, symbols, applyTheme, themeOptions } from '../theme.js';
 import type { Profile, AppStore } from '../types.js';
 import { readCurrentConfig, createProfile, pushHistory, saveGlobalConfigField, cloneProfile, exportProfiles } from '../store.js';
+import { computeNavWidth } from '../utils.js';
 import { OVERRIDE_FIELDS, getGlobalVal } from './config/constants.js';
 import { OverridesPanel } from './config/OverridesPanel.js';
 import { FieldEditor } from './config/FieldEditor.js';
@@ -278,7 +279,7 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
     }
 
     return selected ? (
-      <OverridesPanel profile={selected} activeFieldIdx={rightIdx} focusState={focusState} globalConfig={globalConfig} lang={lang} />
+      <OverridesPanel profile={selected} activeFieldIdx={rightIdx} focusState={focusState} globalConfig={globalConfig} lang={lang} navWidth={computeNavWidth(profiles.map(p => p.name), 9)} />
     ) : null;
   };
 
@@ -317,8 +318,8 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
         <Text color={colors.accent} bold>{symbols.dot} Codex Start</Text>
       </Box>
 
-      <Box borderStyle="round" borderColor={focusState === 'left' ? colors.primary : colors.darkBorder} flexDirection="row" width="100%">
-        <Box flexDirection="column" width="10%" minWidth={14} flexShrink={0} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} borderColor={colors.darkBorder} padding={1} paddingRight={2}>
+      <Box borderStyle="round" borderColor={colors.dim} flexDirection="row" width="100%">
+        <Box flexDirection="column" width={computeNavWidth(profiles.map(p => p.name), 9)} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} borderColor={colors.dim} padding={1} paddingRight={2}>
           <Text color={colors.muted} bold> Profiles</Text>
           <Box marginTop={1} flexDirection="column">
             {focusState === 'left' && profiles.length > 0 && !addMode && !deleteMode && !historyMode && !testMode && !previewMode ? (
@@ -334,11 +335,11 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
                 )}
                 itemComponent={({ isSelected, label }: any) => {
                   const p = profiles.find((pr) => pr.id === label);
-                  if (!p) return <Text wrap="truncate-end">{label}</Text>;
+                  if (!p) return <Text>{label}</Text>;
                   const res = testResults[p.id];
                   return (
                     <Box>
-                      <Text wrap="truncate-end">
+                      <Text>
                         <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '  '}</Text>
                         {res === 'ok' && <Text color={colors.success}>{`${symbols.check} `}</Text>}
                         {res === 'fail' && <Text color={colors.danger}>{`${symbols.cross} `}</Text>}
@@ -358,7 +359,7 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
                   const res = testResults[p.id];
                   return (
                     <Box key={p.id}>
-                      <Text wrap="truncate-end">
+                      <Text>
                         <Text color={isSelected ? colors.primary : colors.dim}>{isSelected ? `${symbols.arrow} ` : '  '}</Text>
                         <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '  '}</Text>
                         {res === 'ok' && <Text color={colors.success}>{`${symbols.check} `}</Text>}

@@ -7,6 +7,7 @@ import type { Profile } from '../../../types.js';
 import { ALL_MODELS } from '../constants.js';
 import { ensureBackup, loadStore } from '../../../store.js';
 import { restoreBackup, injectProfile } from '../../../injector.js';
+import { computeNavWidth } from '../../../utils.js';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 function useSpinner() {
@@ -18,11 +19,16 @@ function useSpinner() {
   return SPINNER_FRAMES[frame];
 }
 
-const stripAnsi = (str: string) => str.replace(/\x1b\[[0-9;]*m/g, '').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
-
+const stripAnsi = (str: string) => {
+  return str
+    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '') // Remove ANSI escape codes
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '') // Remove advanced ANSI controls 
+    .replace(/\r\n/g, '\n') // IMPORTANT: Normalize Windows linebreaks so they don't trigger \r strip logic
+    .replace(/[\b\v\f\x00-\x08\x0E-\x1F]/g, ''); // Strip backspaces and other invisible controls (DO NOT strip \r or \n here)
+};
 
 type TestStatus = 'ok' | 'fail' | 'running';
-const TEST_TIMEOUT_MS = 15_000;
+const TEST_TIMEOUT_MS = 120_000;
 
 interface Props {
   profiles: Profile[];
@@ -49,6 +55,7 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
   const [customInput, setCustomInput] = useState(false);
   const [customModel, setCustomModel] = useState('');
   const [singleOutput, setSingleOutput] = useState('');
+  const [batchOutputs, setBatchOutputs] = useState<Record<string, string[]>>({});
   const [batchTargets, setBatchTargets] = useState<{ id: string; model: string }[]>([]);
 
   const fallback = globalConfig.model || 'gpt-5.4';
@@ -65,7 +72,7 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
   };
 
   // 通用执行测试的函数，含超时控制和耗时记录
-  const runTest = useCallback((profile: Profile, model: string, signal?: AbortSignal, onData?: (chunk: string) => void): Promise<{ ok: boolean; output: string; durationMs: number }> => {
+  const runTest = useCallback((profile: Profile, model: string, signal?: AbortSignal, onData?: (chunk: string) => void, skipRestore?: boolean): Promise<{ ok: boolean; output: string; durationMs: number }> => {
     return new Promise(resolve => {
       const startTime = Date.now();
       const store = ensureBackup(loadStore());
@@ -80,7 +87,7 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
         if (finished) return;
         finished = true;
         if (signal) signal.removeEventListener('abort', handleAbort);
-        restoreBackup(store.backup);
+        if (!skipRestore) restoreBackup(store.backup);
         resolve(result);
       };
 
@@ -134,9 +141,42 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
     abortControllerRef.current = new AbortController();
 
     setTestResults(prev => ({ ...prev, [p.id]: 'running' }));
+
+    let buffer = '';
+    let lastRender = Date.now();
+    let timer: NodeJS.Timeout | null = null;
+
+    const flushOutput = (append: string) => {
+      setSingleOutput(prev => {
+        let text = prev + append;
+        // 模拟 \r 即控制台回车动作：在任意遇到的行里，如果含有\r，则前面的内容被覆盖，只保留最后一个 \r 后面的内容
+        const lines = text.split('\n').map(l => {
+          const lastCr = l.lastIndexOf('\r');
+          return lastCr >= 0 ? l.slice(lastCr + 1) : l;
+        });
+        return lines.join('\n').slice(-3000);
+      });
+      buffer = '';
+      lastRender = Date.now();
+    };
+
     const result = await runTest(p, model, abortControllerRef.current.signal, (chunk) => {
-      setSingleOutput(prev => (prev + chunk).slice(-2000)); // Keeps last 2000 chars to avoid memory leaks
+      buffer += chunk;
+      const now = Date.now();
+      if (now - lastRender > 1000) {
+        flushOutput(buffer);
+      } else if (!timer) {
+        timer = setTimeout(() => {
+          flushOutput(buffer);
+          timer = null;
+        }, 1000);
+      }
     });
+    
+    if (timer) clearTimeout(timer);
+    if (buffer) {
+      flushOutput(buffer);
+    }
     
     setTestResults(prev => ({ ...prev, [p.id]: result.ok ? 'ok' : 'fail' }));
     setTestDurations(prev => ({ ...prev, [p.id]: result.durationMs }));
@@ -156,17 +196,76 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
     setPhase('running');
     abortControllerRef.current = new AbortController();
 
-    for (const t of targets) {
+    // 清空本次所有待测目标上一轮的旧成绩，让它们完全成为干净的 Pending 状态
+    setTestResults(prev => {
+      const next = { ...prev };
+      for (const t of targets) delete next[t.id];
+      return next;
+    });
+    setTestDurations(prev => {
+      const next = { ...prev };
+      for (const t of targets) delete next[t.id];
+      return next;
+    });
+
+    const store = ensureBackup(loadStore());
+    const promises = [];
+    
+    // 清理之前的单独流出并且为新的各奔东西腾地
+    setSingleOutput('');
+    setBatchOutputs({});
+
+    for (let i = 0; i < targets.length; i++) {
+      const t = targets[i];
       if (abortControllerRef.current?.signal.aborted) break;
       const p = profiles.find(pr => pr.id === t.id);
       if (!p) continue;
       
+      // 核心并行策略：错峰延迟发车（防止配置文件在刚启动时被并发写入冲掉串台）
+      // 除了第一个立马发车，后续每个目标启动前静静等待 1500 毫秒
+      if (i > 0) {
+        await new Promise(r => setTimeout(r, 1500));
+      }
+      // 等待完毕后先严密防守：如果是被打断的，立即停飞撤摊以免产生永远死在 running 却不发车的僵尸幽灵！
+      if (abortControllerRef.current?.signal.aborted) break;
+
+      // 真正将要起爆的最后一刻，再挂起牌子宣告启航。这样死断中途也绝不虚挂！
       setTestResults(prev => ({ ...prev, [p.id]: 'running' }));
-      const result = await runTest(p, t.model, abortControllerRef.current.signal);
-      setTestResults(prev => ({ ...prev, [p.id]: result.ok ? 'ok' : 'fail' }));
-      setTestDurations(prev => ({ ...prev, [p.id]: result.durationMs }));
+
+      let profileBuffer = '';
+      let timer: NodeJS.Timeout | null = null;
+      let lastRender = Date.now();
+
+      const updateLatest = (str: string) => {
+        profileBuffer += str;
+        // 把 \r 换成 \n 降维，并切出最新的四条带有效字符的行，这样既充实也不会溢出专属槽
+        const lines = profileBuffer.replace(/\r/g, '\n').split('\n').filter(Boolean);
+        const latest4 = lines.slice(-4);
+        if (latest4.length) setBatchOutputs(prev => ({ ...prev, [p.id]: latest4 }));
+        if (lines.length > 20) profileBuffer = latest4.join('\n') + '\n'; // 清理内存留存四条多一点就行
+        lastRender = Date.now();
+      };
+
+      // 不 await 这个测试的完成，直接推向后台让它们齐步并肩地消耗网络等待时间
+      const testPromise = runTest(p, t.model, abortControllerRef.current.signal, (chunk) => {
+        const now = Date.now();
+        if (now - lastRender > 1000) updateLatest(chunk);
+        else if (!timer) timer = setTimeout(() => { updateLatest(chunk); timer = null; }, 1000);
+      }, true).then(result => {
+        setTestResults(prev => ({ ...prev, [p.id]: result.ok ? 'ok' : 'fail' }));
+        setTestDurations(prev => ({ ...prev, [p.id]: result.durationMs }));
+        if (!result.ok && result.output) {
+           updateLatest(`\n[Err] ${result.output.split('\n')[0]}`);
+        }
+      });
+      promises.push(testPromise);
     }
     
+    // 发完所有的车之后，在此等待所有的并发网络请求归位
+    await Promise.all(promises);
+    
+    // 统一跑完所有并发后再干净地归位大环境
+    restoreBackup(store.backup);
     setPhase('done');
     abortControllerRef.current = null;
   };
@@ -233,6 +332,8 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
   const targets = mode === 'batch' ? profiles.filter(p => checked[p.id]) : [profiles[profileIdx]].filter(Boolean);
   const okN = targets.filter(p => testResults[p.id] === 'ok').length;
   const failN = targets.filter(p => testResults[p.id] === 'fail').length;
+  const runningN = targets.filter(p => testResults[p.id] === 'running').length;
+  const pendingN = targets.length - okN - failN - runningN;
 
   return (
     <Box flexDirection="column" padding={1}>
@@ -242,9 +343,9 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
         <Text color={mode === 'batch' ? colors.primary : colors.dim} bold={mode === 'batch'}>[Batch]</Text>
       </Box>
 
-      <Box borderStyle="round" borderColor={focus === 'left' ? colors.primary : colors.darkBorder} flexDirection="row" width="100%">
+      <Box borderStyle="round" borderColor={colors.dim} flexDirection="row" width="100%">
         {/* Left: Profiles */}
-        <Box flexDirection="column" width="20%" minWidth={16} flexShrink={0} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} borderColor={colors.darkBorder} padding={1}>
+        <Box flexDirection="column" width={computeNavWidth(profiles.map(p => p.name), 13, 7)} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} borderColor={colors.dim} padding={1} paddingRight={2}>
           <Text color={colors.muted} bold>Profiles</Text>
           <Box marginTop={1} flexDirection="column">
             {profiles.map((p, i) => {
@@ -252,7 +353,7 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
               const res = testResults[p.id];
               return (
                 <Box key={p.id} gap={1}>
-                  <Text wrap="truncate-end">
+                  <Text>
                     {focus === 'left' && hl ? <Text color={colors.primary}>{`${symbols.arrow} `}</Text> : <Text>{'  '}</Text>}
                     {mode === 'batch' && <Text color={checked[p.id] ? colors.success : colors.dim}>{`[${checked[p.id] ? 'x' : ' '}] `}</Text>}
                     <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '  '}</Text>
@@ -321,21 +422,51 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
                   <Text color={colors.primary}>[ Total: {targets.length} ]</Text>
                   <Text color={colors.success}>{symbols.check} OK: {okN}</Text>
                   <Text color={colors.danger}>{symbols.cross} Fail: {failN}</Text>
-                  <Text color={colors.warning}>{symbols.circle} Pending: {targets.length - okN - failN}</Text>
+                  <Text color={colors.accent}>{spinnerFrame} Running: {runningN}</Text>
+                  <Text color={colors.warning}>{symbols.circle} Pending: {pendingN}</Text>
                 </Box>
               )}
 
               {mode === 'single' ? (
-                <Box flexDirection="column" marginTop={1}>
-                  {singleOutput ? singleOutput.trim().split('\n').filter(Boolean).slice(-15).map((line, i) => (
-                    <Text key={i} color={phase === 'running' ? colors.muted : (testResults[profiles[profileIdx]?.id] === 'ok' ? colors.secondary : colors.text)} wrap="truncate-end">{line}</Text>
-                  )) : (
+                <Box flexDirection="column" marginTop={1} minHeight={15}>
+                  {singleOutput ? singleOutput.trim().split('\n').filter(Boolean).slice(-15).map((line, i) => {
+                    const safeLine = line.length > 90 ? line.slice(0, 87) + '...' : line;
+                    return (
+                      <Text key={i} color={phase === 'running' ? colors.muted : (testResults[profiles[profileIdx]?.id] === 'ok' ? colors.secondary : colors.text)} wrap="truncate-end">
+                        {safeLine}
+                      </Text>
+                    );
+                  }) : (
                     <Text color={colors.dim}>[Waiting for output...]</Text>
                   )}
                 </Box>
               ) : (
-                <Box marginTop={1} flexDirection="column">
-                  <Text color={colors.dim}>Testing in progress. Check left panel for status.</Text>
+                <Box flexDirection="column" marginTop={1} padding={1} borderStyle="single" borderColor={colors.darkBorder}>
+                  <Text color={colors.muted} bold>Live Task Logs</Text>
+                  <Box flexDirection="column" marginTop={1} gap={1}>
+                    {targets.map(t => {
+                      const p = profiles.find(pr => pr.id === t.id);
+                      if (!p) return null;
+                      const lines = batchOutputs[p.id] || ['Loading...'];
+                      const isRunning = testResults[p.id] === 'running';
+                      return (
+                        <Box key={p.id} flexDirection="column" minHeight={5}>
+                          <Text color={isRunning ? colors.text : colors.dim}>
+                            {isRunning ? `${spinnerFrame} ` : '  '} <Text color={colors.primary} bold>[{p.name}]</Text> 
+                          </Text>
+                          {lines.map((l, idx) => {
+                             // 切断 80 确保哪怕没有 Ink 原生保护终端，也不会自动变长软换行抖动
+                             const safeLine = l.length > 80 ? l.slice(0, 77) + '...' : l;
+                             return (
+                               <Text key={idx} color={colors.dim} wrap="truncate-end">
+                                 {`  ${safeLine}`}
+                               </Text>
+                             );
+                          })}
+                        </Box>
+                      );
+                    })}
+                  </Box>
                 </Box>
               )}
             </Box>

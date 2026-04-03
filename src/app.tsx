@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { render, useApp } from 'ink';
 import { spawn } from 'node:child_process';
+import { parse as parseToml } from 'smol-toml';
 import { ConfigUI } from './components/ConfigUI.js';
 import { ListUI, ListAction } from './components/ListUI.js';
 import { loadStore, saveStore, ensureBackup, exportProfiles, importProfiles } from './store.js';
@@ -37,8 +38,40 @@ function launchCodex(profile: Profile) {
   restoreBackup(store.backup);
   injectProfile(profile);
   const args = buildLaunchArgs(profile);
+
+  // 在 inject 和 spawn 之间读取注入后的 config.toml（此时还未 restore）
+  let cfgModel = profile.model;
+  let cfgEffort = profile.model_reasoning_effort;
+  try {
+    const cfgPath = join(homedir(), '.codex', 'config.toml');
+    if (existsSync(cfgPath)) {
+      const cfg = parseToml(readFileSync(cfgPath, 'utf-8'));
+      if (!cfgModel && cfg.model) cfgModel = String(cfg.model);
+      if (!cfgEffort && cfg.model_reasoning_effort) cfgEffort = String(cfg.model_reasoning_effort);
+    }
+  } catch { /* 读取失败不影响启动 */ }
   
+  // 1. 设置终端标题
+  process.stdout.write(`\x1b]0;Codex [cs]: ${profile.name}\x07`);
+
+  // 2. 覆盖 "$ cs" 那一行，显示 profile 摘要（上移一行 + 清行 + 写入）
+  const sep = ' \x1b[38;5;240m|\x1b[0m ';
+  const parts = [
+    `\x1b[1m${profile.name}\x1b[0m`,
+    profile.base_url ? `\x1b[38;5;243m${profile.base_url}\x1b[0m` : '',
+    profile.api_key ? `\x1b[38;5;243m${profile.api_key}\x1b[0m` : '',
+    cfgModel ? `\x1b[38;5;147m${cfgModel}\x1b[0m` : '',
+    cfgEffort ? `\x1b[38;5;215m${cfgEffort}\x1b[0m` : '',
+  ].filter(Boolean).join(sep);
+  process.stdout.write(`\x1b[1A\x1b[2K\r\x1b[38;5;45m[cs]\x1b[0m ${parts}\n`);
+
   const child = spawn('codex', args, { stdio: 'inherit' });
+  
+  // codex 启动后配置已加载到内存，立即还原全局配置不影响运行中的实例
+  setTimeout(() => {
+    restoreBackup(store.backup);
+  }, 1500);
+
   child.on('error', (err) => {
     console.error(`\n  \x1b[31mFailed:\x1b[0m ${err.message}`);
     process.exit(1);

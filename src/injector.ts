@@ -12,6 +12,20 @@ const CODEX_DIR = join(homedir(), '.codex');
 const AUTH_FILE = join(CODEX_DIR, 'auth.json');
 const CONFIG_FILE = join(CODEX_DIR, 'config.toml');
 
+/** 从当前 config.toml 读取需要保留的 section（trust/notice/mcp/tui 等） */
+function readPreservedSections(): Record<string, any> {
+  const preserved: Record<string, any> = {};
+  if (!existsSync(CONFIG_FILE)) return preserved;
+  try {
+    const current = parse(readFileSync(CONFIG_FILE, 'utf-8'));
+    // 这些 section 是 Codex CLI 自身管理的，cs 不应覆盖
+    for (const key of ['projects', 'notice', 'mcp_servers', 'tui', 'features']) {
+      if (current[key] !== undefined) preserved[key] = current[key];
+    }
+  } catch { /* 解析失败则放弃保留 */ }
+  return preserved;
+}
+
 /** 注入 profile 到 config.toml 和 auth.json，只覆盖有值的字段 */
 export function injectProfile(profile: Profile): void {
   ensureDir(CODEX_DIR);
@@ -53,6 +67,14 @@ export function injectProfile(profile: Profile): void {
   if (profile.disable_response_storage === 'true') config.disable_response_storage = true;
   else if (profile.disable_response_storage === 'false') config.disable_response_storage = false;
 
+  // 合并保留的 section（trust 等），profile 字段优先
+  const preserved = readPreservedSections();
+  for (const [key, val] of Object.entries(preserved)) {
+    if (config[key] === undefined) config[key] = val;
+    else if (typeof val === 'object' && !Array.isArray(val)) {
+      config[key] = { ...val, ...config[key] };
+    }
+  }
   writeFileSync(CONFIG_FILE, stringify(config) + '\n');
 }
 
@@ -72,6 +94,25 @@ export function restoreBackup(backup: AppStore['backup']): boolean {
   if (!backup) return false;
   ensureDir(CODEX_DIR);
   writeFileSync(AUTH_FILE, JSON.stringify(backup.authJson, null, 2) + '\n');
+
+  // 先读取当前 config 中需要保留的 section（trust 等）
+  const preserved = readPreservedSections();
+
+  // 写入 backup 的 config
   writeFileSync(CONFIG_FILE, backup.configToml);
+
+  // 把保留的 section 合并回去
+  if (Object.keys(preserved).length > 0) {
+    try {
+      const restored = parse(readFileSync(CONFIG_FILE, 'utf-8'));
+      for (const [key, val] of Object.entries(preserved)) {
+        if (restored[key] === undefined) restored[key] = val;
+        else if (typeof val === 'object' && !Array.isArray(val)) {
+          restored[key] = { ...(val as Record<string, any>), ...(restored[key] as Record<string, any>) };
+        }
+      }
+      writeFileSync(CONFIG_FILE, stringify(restored) + '\n');
+    } catch { /* backup 格式异常就不合并了 */ }
+  }
   return true;
 }

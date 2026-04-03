@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import { colors, symbols } from '../../theme.js';
 import type { Profile } from '../../types.js';
 import { OVERRIDE_FIELDS, TABS, getGlobalVal } from './constants.js';
+import { computeDisplayWidth } from '../../utils.js';
 
 
 export function OverridesPanel({
@@ -11,12 +12,14 @@ export function OverridesPanel({
   focusState,
   globalConfig,
   lang,
+  navWidth = 24,
 }: {
   profile: Profile;
   activeFieldIdx: number | null;
   focusState: 'left' | 'right' | 'edit';
   globalConfig: Record<string, any>;
   lang: 'zh' | 'en';
+  navWidth?: number;
 }) {
   const currentIdx = activeFieldIdx ?? 0;
   const currentField = OVERRIDE_FIELDS[currentIdx];
@@ -39,25 +42,19 @@ export function OverridesPanel({
   // 动态防御与弹性排版: 精确计算所有的终端边框与内边距，确保分配给栅格的物理列数与剩余空间 100% 一致。
   const termW = process.stdout.columns || 100;
   const innerW = termW - 2; // 外层 round 边框(左+右=2)
-  const leftPanelW = Math.max(14, Math.floor(innerW * 0.10)); // 左侧边栏 10% 最小 14
+  const leftPanelW = navWidth; // 由父组件传入，与实际导航宽度一致
   const rightContainerW = innerW - leftPanelW; // 右侧大容器
   
   // 减去所有逐层 padding 消耗:
-  // 1. Right Detail 容器: paddingLeft=2, paddingRight=1 (共计 3)
-  // 2. OverridesPanel 表格区域: paddingX=1 (共计 2)
-  // 总损耗 = 5
-  const finalRowW = rightContainerW - 5;
+  // 1. 左侧导航 borderRight 竖线: 1
+  // 2. Right Detail 容器: paddingLeft=2, paddingRight=1 (共计 3)
+  // 3. OverridesPanel 表格区域: paddingX=1 (共计 2)
+  // 总损耗 = 6
+  const finalRowW = rightContainerW - 6;
   const safeSpace = Math.max(40, finalRowW);
 
   // 计算字段名最大宽度
-  const computeStrLen = (str: string) => {
-    let len = 0;
-    for (let i = 0; i < str.length; i++) {
-      len += str.charCodeAt(i) > 255 ? 2 : 1;
-    }
-    return len;
-  };
-  const MAX_LABEL_WIDTH = Math.max(...OVERRIDE_FIELDS.map(f => computeStrLen(f.label)));
+  const MAX_LABEL_WIDTH = Math.max(...OVERRIDE_FIELDS.map(f => computeDisplayWidth(f.label)));
 
   const W_VAL = Math.max(8, Math.floor(safeSpace * 0.12));
   const W_GLO = Math.max(8, Math.floor(safeSpace * 0.12));
@@ -125,13 +122,13 @@ export function OverridesPanel({
                   </Box>
                   {/* 本地值列 */}
                   <Box width={W_VAL} flexShrink={0} paddingRight={1}>
-                    <Text color={val ? colors.secondary : colors.dim} bold={!!val && isActive} wrap="truncate-end">
+                    <Text key={String(isActive)} color={val ? colors.secondary : colors.dim} bold={!!val && isActive} wrap={isActive ? "wrap" : "truncate-end"}>
                       {val ? val : '(not set) '}
                     </Text>
                   </Box>
                   {/* 全局值列 */}
                   <Box width={W_GLO} flexShrink={0} paddingRight={1}>
-                    <Text color={isActive ? colors.muted : colors.dim} wrap="truncate-end">
+                    <Text key={String(isActive)} color={isActive ? colors.muted : colors.dim} wrap={isActive ? "wrap" : "truncate-end"}>
                       {globalVal ? globalVal : ' '}
                     </Text>
                   </Box>

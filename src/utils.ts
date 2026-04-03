@@ -12,3 +12,41 @@ export function fuzzyMatch(profiles: { name: string }[], query: string): number[
     .filter(x => x.match)
     .map(x => x.i);
 }
+
+/** 计算字符串的终端显示宽度（非 ASCII 字符占 2 列，匹配 CJK 终端 Ambiguous 宽度行为） */
+export function computeDisplayWidth(str: string): number {
+  let len = 0;
+  for (let i = 0; i < str.length; i++) {
+    len += str.charCodeAt(i) > 255 ? 2 : 1;
+  }
+  return len;
+}
+
+/**
+ * 根据 profile 名字列表动态计算导航面板所需的宽度。
+ * 
+ * 布局结构：width = padding(3) + border(1) + prefixChars + maxNameWidth + suffixChars + safety(1)
+ *   - padding: padding={1}(left=1) + paddingRight={2}(right=2) = 3
+ *   - border: borderRight single = 1
+ *   - safety: 额外 1 字符防溢出
+ * 
+ * @param names - profile 名字列表
+ * @param prefixChars - 行首图标开销（arrow + star + test icon 等）
+ * @param suffixChars - 行尾开销（如 duration 文本）
+ * @param minWidth - 最小宽度下限
+ */
+export function computeNavWidth(
+  names: string[],
+  prefixChars: number = 6,
+  suffixChars: number = 0,
+  minWidth: number = 24,
+): number {
+  const maxNameW = names.length > 0
+    ? Math.max(...names.map(computeDisplayWidth))
+    : 0;
+  // " Profiles" 标题宽度 = 9
+  const headerW = 9;
+  const contentW = Math.max(headerW, prefixChars + maxNameW + suffixChars);
+  const totalW = contentW + 3 + 1 + 1; // padding(3) + border(1) + safety(1)
+  return Math.max(minWidth, totalW);
+}

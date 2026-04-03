@@ -5,7 +5,7 @@ import SelectInput from 'ink-select-input';
 import { colors, symbols, applyTheme, themeOptions } from '../theme.js';
 import type { Profile, AppStore } from '../types.js';
 import { readCurrentConfig, saveStore, cloneProfile, exportProfiles } from '../store.js';
-import { fuzzyMatch } from '../utils.js';
+import { fuzzyMatch, computeNavWidth } from '../utils.js';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -173,7 +173,7 @@ export function ListUI({ store, onUpdate, onAction }: Props) {
 
       <Box borderStyle="round" borderColor={colors.dim} flexDirection="row" width="100%">
         {/* Left: profile list */}
-        <Box flexDirection="column" width={24} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} borderColor={colors.dim} padding={1} paddingRight={2}>
+        <Box flexDirection="column" width={computeNavWidth(store.profiles.map(p => p.name), 6)} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} borderColor={colors.dim} padding={1} paddingRight={2}>
           <Text color={colors.muted} bold> Profiles</Text>
 
           {searchMode && (
@@ -190,7 +190,7 @@ export function ListUI({ store, onUpdate, onAction }: Props) {
               ) : (
                 filteredProfiles.map((p, i) => (
                   <Box key={p.id}>
-                    <Text wrap="truncate-end">
+                    <Text>
                       <Text color={i === 0 ? colors.primary : colors.dim}>{i === 0 ? `${symbols.arrow} ` : '  '}</Text>
                       <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '  '}</Text>
                       <Text color={i === 0 ? colors.text : colors.muted}>{p.name}</Text>
@@ -210,10 +210,10 @@ export function ListUI({ store, onUpdate, onAction }: Props) {
                 )}
                 itemComponent={({ isSelected, label }: any) => {
                   const p = store.profiles.find((pr) => pr.id === label);
-                  if (!p) return <Text wrap="truncate-end">{label}</Text>;
+                  if (!p) return <Text>{label}</Text>;
                   return (
                     <Box>
-                      <Text wrap="truncate-end">
+                      <Text>
                         <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '  '}</Text>
                         <Text color={isSelected ? colors.text : colors.muted} bold={isSelected}>{p.name}</Text>
                       </Text>
