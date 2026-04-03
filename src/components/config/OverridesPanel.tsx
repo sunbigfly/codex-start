@@ -83,7 +83,6 @@ export function OverridesPanel({
           {visibleFields.map((f) => {
             const idx = OVERRIDE_FIELDS.indexOf(f);
             let val = (profile as any)[f.key] || '';
-            if (f.key === 'api_key' && val) val = maskApiKey(String(val));
             let globalVal = getGlobalVal(globalConfig, f);
             if (f.group === 'cfg_profile') globalVal = ''; // Profile settings have no globals
             const isActive = focusState === 'right' && activeFieldIdx === idx;
@@ -116,13 +115,13 @@ export function OverridesPanel({
                   </Box>
                   {/* 本地值列 */}
                   <Box width={W_VAL} flexShrink={0} paddingRight={1}>
-                    <Text color={val ? colors.secondary : colors.dim} bold={!!val && isActive} wrap={isActive ? "wrap" : "truncate-end"}>
+                    <Text color={val ? colors.secondary : colors.dim} bold={!!val && isActive} wrap="wrap">
                       {val ? val : '(not set) '}
                     </Text>
                   </Box>
                   {/* 全局值列 */}
                   <Box width={W_GLO} flexShrink={0} paddingRight={1}>
-                    <Text color={isActive ? colors.muted : colors.dim} wrap="truncate-end">
+                    <Text color={isActive ? colors.muted : colors.dim} wrap="wrap">
                       {globalVal ? globalVal : ' '}
                     </Text>
                   </Box>
