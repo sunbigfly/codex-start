@@ -1,8 +1,12 @@
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { parse, stringify } from 'smol-toml';
 import type { Profile, AppStore } from './types.js';
+
+function ensureDir(dir: string) {
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+}
 
 const CODEX_DIR = join(homedir(), '.codex');
 const AUTH_FILE = join(CODEX_DIR, 'auth.json');
@@ -10,6 +14,7 @@ const CONFIG_FILE = join(CODEX_DIR, 'config.toml');
 
 /** 注入 profile 到 config.toml 和 auth.json，只覆盖有值的字段 */
 export function injectProfile(profile: Profile): void {
+  ensureDir(CODEX_DIR);
   // 1. auth.json
   let auth: Record<string, unknown> = {};
   if (existsSync(AUTH_FILE)) auth = JSON.parse(readFileSync(AUTH_FILE, 'utf-8'));
@@ -65,6 +70,7 @@ export function buildLaunchArgs(profile: Profile): string[] {
 
 export function restoreBackup(backup: AppStore['backup']): boolean {
   if (!backup) return false;
+  ensureDir(CODEX_DIR);
   writeFileSync(AUTH_FILE, JSON.stringify(backup.authJson, null, 2) + '\n');
   writeFileSync(CONFIG_FILE, backup.configToml);
   return true;

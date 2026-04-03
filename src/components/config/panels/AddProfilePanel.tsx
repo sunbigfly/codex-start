@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { colors, symbols } from '../../../theme.js';
+import { maskApiKey } from '../../../utils.js';
 
 export function AddProfilePanel({
   onAdd,
@@ -41,7 +42,7 @@ export function AddProfilePanel({
                   }
                   setAddStep(1); 
                 }} placeholder="https://api.openai.com/v1" />
-                {urlWarning && <Text color={colors.warning}>⚠️ {urlWarning}</Text>}
+                {urlWarning && <Text color={colors.warning}>[!] {urlWarning}</Text>}
               </Box>
             ) : (
               <Text color={colors.secondary}>{addUrl}</Text>
@@ -55,18 +56,10 @@ export function AddProfilePanel({
             {addStep === 1 ? (
               <TextInput value={addKey} onChange={setAddKey} onSubmit={() => { 
                 if (!addKey) return; 
-                let defaultName = addUrl;
-                try {
-                  const parts = new URL(addUrl).hostname.split('.');
-                  const skip = new Set(['www', 'api', 'com', 'org', 'io', 'net', 'ai', 'dev', 'co']);
-                  const m = parts.filter((p) => !skip.has(p));
-                  if (m.length > 0) defaultName = m.map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(' ');
-                } catch { }
-                setAddName(defaultName);
                 setAddStep(2); 
-              }} placeholder="sk-..." mask="*" />
+              }} placeholder="sk-..." />
             ) : (
-              <Text color={colors.dim}>{'*'.repeat(16)}</Text>
+              <Text color={colors.dim}>{maskApiKey(addKey)}</Text>
             )}
           </Box>
         )}
@@ -76,11 +69,12 @@ export function AddProfilePanel({
             <Text color={colors.text}>{'Profile Name:'.padEnd(16)}</Text>
             {addStep === 2 ? (
               <TextInput value={addName} onChange={setAddName} onSubmit={() => {
-                const finalName = addName.trim() || 'Unnamed';
+                const finalName = addName.trim();
+                if (!finalName) return; // Prompt user to enter a name
                 onAdd(addUrl, addKey, finalName);
-              }} placeholder="My API Configuration" />
+              }} placeholder="Please enter a profile name" />
             ) : (
-              <Text color={colors.secondary}>{addName || 'Unnamed'}</Text>
+              <Text color={colors.secondary}>{addName}</Text>
             )}
           </Box>
         )}

@@ -1,18 +1,20 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
 import { colors, symbols } from '../theme.js';
 import type { Profile, AppStore } from '../types.js';
-import { readCurrentConfig, createProfile, pushHistory, saveGlobalConfigField } from '../store.js';
+import { readCurrentConfig, createProfile, pushHistory, saveGlobalConfigField, cloneProfile, exportProfiles } from '../store.js';
 import { OVERRIDE_FIELDS, getGlobalVal } from './config/constants.js';
 import { OverridesPanel } from './config/OverridesPanel.js';
 import { FieldEditor } from './config/FieldEditor.js';
 import { HistoryPanel } from './config/panels/HistoryPanel.js';
 import { AddProfilePanel } from './config/panels/AddProfilePanel.js';
 import { DeleteProfilePanel } from './config/panels/DeleteProfilePanel.js';
-import { TestProfilePanel } from './config/panels/TestProfilePanel.js';
-import { BatchTestPanel } from './config/panels/BatchTestPanel.js';
+import { TestUI } from './config/panels/TestUI.js';
 import { restoreBackup } from '../injector.js';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 
 interface Props {
   store: AppStore;
@@ -35,25 +37,32 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
   const [rightIdx, setRightIdx] = useState(0);
   
   const [addMode, setAddMode] = useState(initialMode === 'add');
-  const [testMode, setTestMode] = useState(initialMode === 'test');
   const [deleteMode, setDeleteMode] = useState(false);
-  const [batchMode, setBatchMode] = useState(false);
+  const [testMode, setTestMode] = useState(initialMode === 'test' || initialMode === 'batch');
   const [historyMode, setHistoryMode] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
 
+  // testResults / testDurations 使用 useEffect 同步持久化（不在 setState 回调里做 side effect）
   const initialTR = Object.fromEntries(
     Object.entries(store.testResults || {}).filter(([_, v]) => v === 'ok' || v === 'fail')
   ) as Record<string, 'ok' | 'fail' | 'running'>;
-  const [testResults, _setTestResults] = useState(initialTR);
-  const setTestResults = (updater: (prev: Record<string, 'ok' | 'fail' | 'running'>) => Record<string, 'ok' | 'fail' | 'running'>) => {
-    _setTestResults(prev => {
-      const next = updater(prev);
-      const persistable = Object.fromEntries(
-        Object.entries(next).filter(([_, v]) => v === 'ok' || v === 'fail')
-      );
-      onUpdate({ ...store, testResults: persistable });
-      return next;
-    });
-  };
+  const [testResults, setTestResults] = useState(initialTR);
+  const [testDurations, setTestDurations] = useState<Record<string, number>>(store.testDurations || {});
+
+  // 使用 useEffect 将 testResults 和 testDurations 同步持久化到 store
+  // mounted ref 跳过首次渲染，避免 mount 时无谓写盘
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) { mounted.current = true; return; }
+    const persistable = Object.fromEntries(
+      Object.entries(testResults).filter(([_, v]) => v === 'ok' || v === 'fail')
+    );
+    const durPersist = { ...testDurations };
+    for (const key of Object.keys(durPersist)) {
+      if (!persistable[key]) delete durPersist[key];
+    }
+    onUpdate({ ...store, testResults: persistable, testDurations: durPersist });
+  }, [testResults, testDurations]);
 
   const [globalTick, setGlobalTick] = useState(0);
   const [toastMsg, setToastMsg] = useState<{text: string, type: 'error' | 'success'} | null>(null);
@@ -62,8 +71,18 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
   const profiles = store.profiles;
   const selected = profiles[selectedIdx] || null;
 
+  // 移动 profile 顺序
+  const moveProfile = (dir: -1 | 1) => {
+    const newIdx = selectedIdx + dir;
+    if (newIdx < 0 || newIdx >= profiles.length) return;
+    const newProfiles = [...profiles];
+    [newProfiles[selectedIdx], newProfiles[newIdx]] = [newProfiles[newIdx], newProfiles[selectedIdx]];
+    onUpdate({ ...store, profiles: newProfiles });
+    setSelectedIdx(newIdx);
+  };
+
   useInput((input, key) => {
-    if (historyMode || batchMode || addMode || testMode || deleteMode || focusState === 'edit') return;
+    if (historyMode || testMode || addMode || deleteMode || focusState === 'edit' || previewMode) return;
 
     if (focusState === 'right') {
       if (key.escape || key.leftArrow) { setFocusState('left'); return; }
@@ -101,6 +120,7 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
         setTimeout(() => setToastMsg(null), 3000);
         return;
       }
+      if (input === 'p') { setPreviewMode(true); return; }
       if (input === 'l') { setLang(v => v === 'zh' ? 'en' : 'zh'); return; }
       if (key.return || key.rightArrow) { setFocusState('edit'); return; }
       return;
@@ -111,6 +131,25 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
     if (input === 'l') { setLang(v => v === 'zh' ? 'en' : 'zh'); return; }
     if (input === 'a') { setAddMode(true); return; }
     if (input === 'd' && selected) { setDeleteMode(true); return; }
+    if (input === 'c' && selected) {
+      // Clone profile
+      const cloned = cloneProfile(selected);
+      const newProfiles = [...profiles, cloned];
+      onUpdate({ ...store, profiles: newProfiles });
+      setSelectedIdx(newProfiles.length - 1);
+      setToastMsg({ text: `已克隆 "${selected.name}" -> "${cloned.name}"`, type: 'success' });
+      setTimeout(() => setToastMsg(null), 3000);
+      return;
+    }
+    if (input === 'x') {
+      // Export profiles
+      const json = exportProfiles(profiles);
+      const exportPath = join(homedir(), '.codex-start', 'profiles-export.json');
+      writeFileSync(exportPath, json + '\n');
+      setToastMsg({ text: `已导出 ${profiles.length} 个 profiles -> ${exportPath}`, type: 'success' });
+      setTimeout(() => setToastMsg(null), 4000);
+      return;
+    }
     if (input === 'h') {
       if (!store.history || store.history.length === 0) {
         pushHistory(store, 'Initial Backup');
@@ -123,7 +162,10 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
       onUpdate({ ...store, profiles: profiles.map((p) => ({ ...p, isDefault: p.id === selected.id })) });
       return;
     }
-    if (input === 't' && selected) { setTestMode(true); return; }
+    if (input === 't') { setTestMode(true); return; }
+    // Shift+方向键移动 profile 顺序 (用 J/K)
+    if (input === 'J' && selected) { moveProfile(1); return; }
+    if (input === 'K' && selected) { moveProfile(-1); return; }
     if ((key.return || key.rightArrow) && selected) { setFocusState('right'); return; }
   });
 
@@ -147,6 +189,12 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
       );
     }
 
+    if (previewMode && selected) {
+      return (
+        <PreviewPanel profile={selected} globalConfig={globalConfig} onClose={() => setPreviewMode(false)} />
+      );
+    }
+
     if (focusState === 'edit' && selected) {
       const field = OVERRIDE_FIELDS[rightIdx];
       const currentVal = (selected as any)[field.key] || '';
@@ -156,6 +204,7 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
           <Text color={colors.accent} bold>{symbols.dot} Editing: {selected.name} - {field.label}</Text>
           <FieldEditor
             field={field} currentValue={currentVal} globalValue={globalVal} lang={lang}
+            profile={selected}
             onSave={(val) => {
               const updated = profiles.map((p) => p.id === selected.id ? { ...p, [field.key]: val } : p);
               onUpdate({ ...store, profiles: updated });
@@ -187,16 +236,6 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
       );
     }
 
-    if (batchMode) {
-      return (
-        <BatchTestPanel
-          profiles={profiles} globalConfig={globalConfig}
-          testResults={testResults} setTestResults={setTestResults}
-          onCancel={() => setBatchMode(false)}
-        />
-      );
-    }
-
     if (deleteMode && selected) {
       return (
         <DeleteProfilePanel
@@ -213,23 +252,24 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
       );
     }
 
-    if (testMode && selected) {
-      return (
-        <TestProfilePanel
-          profile={selected} globalConfig={globalConfig}
-          setTestResults={setTestResults}
-          onCancel={(runBatch) => {
-             setTestMode(false);
-             if (runBatch) setBatchMode(true);
-          }}
-        />
-      );
-    }
-
     return selected ? (
       <OverridesPanel profile={selected} activeFieldIdx={rightIdx} focusState={focusState} globalConfig={globalConfig} lang={lang} />
     ) : null;
   };
+
+  // TestUI takes over the entire screen
+  if (testMode && profiles.length > 0) {
+    return (
+      <TestUI
+        profiles={profiles} globalConfig={globalConfig}
+        testResults={testResults}
+        setTestResults={(updater) => setTestResults(updater)}
+        testDurations={testDurations}
+        setTestDurations={(updater) => setTestDurations(updater)}
+        onCancel={() => setTestMode(false)}
+      />
+    );
+  }
 
   if (profiles.length === 0 && !addMode && !historyMode) {
     return (
@@ -262,7 +302,7 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
                 onSelect={() => { setFocusState('right'); setRightIdx(0); }}
                 onHighlight={(item) => {
                   const idx = profiles.findIndex((p) => p.id === item.value);
-                  if (idx >= 0) { setSelectedIdx(idx); }
+                  if (idx >= 0) { queueMicrotask(() => setSelectedIdx(idx)); }
                 }}
                 indicatorComponent={({ isSelected }) => (
                   <Text color={isSelected ? colors.primary : colors.dim}>{isSelected ? symbols.arrow : ' '} </Text>
@@ -313,7 +353,7 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
       <Box height={1} marginY={1}>
         {toastMsg ? (
           <Text color={toastMsg.type === 'error' ? colors.warning : colors.success} bold>
-            {toastMsg.type === 'error' ? '⚠️ ' : '✅ '} {toastMsg.text}
+            {toastMsg.type === 'error' ? '[!] ' : '[v] '} {toastMsg.text}
           </Text>
         ) : (
           <Text> </Text>
@@ -321,27 +361,91 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
       </Box>
 
       {(() => {
-        const isSubMode = testMode || addMode || deleteMode || historyMode || batchMode;
+        const isSubMode = addMode || deleteMode || historyMode || testMode || previewMode;
         if (isSubMode) return null;
 
         return focusState === 'left' ? (
           <Box gap={2} flexWrap="wrap">
-            <Text color={colors.dim}>[Enter/→] Edit</Text>
-            <Text color={colors.dim}>[a] Add  [d] Delete</Text>
-            <Text color={colors.dim}>[t] Test Connectivity</Text>
-            <Text color={colors.dim}>[h] History Rollback</Text>
-            <Text color={colors.dim}>[l] Language  [Space] Default  [Esc] Exit</Text>
+            <Text color={colors.dim}>{'[Enter/\u2192] Edit'}</Text>
+            <Text color={colors.dim}>[a] Add  [c] Clone  [d] Delete</Text>
+            <Text color={colors.dim}>[t] Test  [x] Export</Text>
+            <Text color={colors.dim}>[h] History</Text>
+            <Text color={colors.dim}>[J/K] Reorder  [l] Lang  [Space] Default  [Esc] Exit</Text>
           </Box>
         ) : (
           <Box gap={2}>
-            <Text color={colors.dim}>[Enter/→] Edit value</Text>
-            <Text color={colors.dim}>[g] Save to Global</Text>
-            <Text color={colors.dim}>[↑/↓] Navigate List</Text>
-            <Text color={colors.dim}>[Tab] Jump Category</Text>
-            <Text color={colors.dim}>[l] Language  [Esc/←] Back</Text>
+            <Text color={colors.dim}>{'[Enter/\u2192] Edit value'}</Text>
+            <Text color={colors.dim}>[g] Save to Global  [p] Preview</Text>
+            <Text color={colors.dim}>[Up/Down] Navigate  [Tab] Jump Category</Text>
+            <Text color={colors.dim}>{'[l] Language  [Esc/\u2190] Back'}</Text>
           </Box>
         );
       })()}
+    </Box>
+  );
+}
+
+// config.toml 预览面板
+function PreviewPanel({ profile, globalConfig, onClose }: { profile: Profile; globalConfig: Record<string, any>; onClose: () => void }) {
+  useInput((_input, key) => {
+    if (key.escape) onClose();
+  });
+
+  // 模拟计算注入后的 config 快照
+  const preview: Record<string, any> = { ...globalConfig };
+  preview.model_provider = 'custom';
+  if (!preview.model_providers) preview.model_providers = {};
+  preview.model_providers.custom = {
+    name: 'custom',
+    base_url: profile.base_url,
+    wire_api: profile.wire_api || 'responses',
+    requires_openai_auth: true,
+  };
+
+  const optionals: [string, string][] = [
+    ['model', profile.model],
+    ['model_reasoning_effort', profile.model_reasoning_effort],
+    ['personality', profile.personality],
+    ['model_reasoning_summary', profile.model_reasoning_summary],
+    ['service_tier', profile.service_tier],
+    ['approval_policy', profile.approval_policy],
+    ['sandbox_mode', profile.sandbox_mode],
+    ['web_search', profile.web_search],
+  ];
+  for (const [key, val] of optionals) {
+    if (val) preview[key] = val;
+  }
+  if (profile.disable_response_storage === 'true') preview.disable_response_storage = true;
+  else if (profile.disable_response_storage === 'false') preview.disable_response_storage = false;
+
+  // 渲染为 key=value 对，高亮被 profile 覆盖的
+  const renderEntry = (key: string, val: any, depth = 0): React.ReactNode[] => {
+    const indent = '  '.repeat(depth);
+    if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+      return [
+        <Text key={`${key}-h`} color={colors.muted}>{indent}[{key}]</Text>,
+        ...Object.entries(val).flatMap(([k, v]) => renderEntry(k, v, depth + 1)),
+      ];
+    }
+    const isOverridden = optionals.some(([k]) => k === key && (profile as any)[k]);
+    return [
+      <Box key={key} gap={1}>
+        <Text color={colors.dim}>{indent}</Text>
+        <Text color={isOverridden ? colors.secondary : colors.muted}>{key}</Text>
+        <Text color={colors.dim}>=</Text>
+        <Text color={isOverridden ? colors.primary : colors.text}>{String(val)}</Text>
+        {isOverridden && <Text color={colors.warning} italic> (override)</Text>}
+      </Box>
+    ];
+  };
+
+  return (
+    <Box flexDirection="column" padding={1}>
+      <Text color={colors.accent} bold>{symbols.dot} Config Preview: {profile.name}</Text>
+      <Box marginTop={1} flexDirection="column">
+        {Object.entries(preview).flatMap(([k, v]) => renderEntry(k, v))}
+      </Box>
+      <Box marginTop={1}><Text color={colors.dim}>[Esc] Back</Text></Box>
     </Box>
   );
 }

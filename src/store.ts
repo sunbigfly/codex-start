@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { nanoid } from 'nanoid';
 import { parse, stringify } from 'smol-toml';
 import type { Profile, AppStore, AppHistoryEntry } from './types.js';
+import { maskApiKey } from './utils.js';
 
 const STORE_DIR = join(homedir(), '.codex-start');
 const STORE_FILE = join(STORE_DIR, 'data.json');
@@ -18,7 +19,12 @@ function ensureDir(dir: string) {
 export function loadStore(): AppStore {
   ensureDir(STORE_DIR);
   if (!existsSync(STORE_FILE)) return { profiles: [], backup: null };
-  return JSON.parse(readFileSync(STORE_FILE, 'utf-8'));
+  try {
+    return JSON.parse(readFileSync(STORE_FILE, 'utf-8'));
+  } catch {
+    // JSON 损坏时返回空 store 而不是 crash
+    return { profiles: [], backup: null };
+  }
 }
 
 export function saveStore(store: AppStore): void {
@@ -37,6 +43,38 @@ export function ensureBackup(store: AppStore): AppStore {
 
 export function createProfile(data: Omit<Profile, 'id' | 'createdAt'>): Profile {
   return { ...data, id: nanoid(8), createdAt: new Date().toISOString() };
+}
+
+/** 克隆一个 profile，生成新 ID 并在名称后加 (copy) */
+export function cloneProfile(source: Profile): Profile {
+  return {
+    ...source,
+    id: nanoid(8),
+    name: `${source.name} (copy)`,
+    isDefault: false,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/** 导出 profiles 为 JSON 字符串（API Key 掩码） */
+export function exportProfiles(profiles: Profile[]): string {
+  const safe = profiles.map(p => ({
+    ...p,
+    api_key: maskApiKey(p.api_key),
+  }));
+  return JSON.stringify(safe, null, 2);
+}
+
+/** 从 JSON 字符串导入 profiles，为每个生成新 ID */
+export function importProfiles(json: string): Profile[] {
+  const arr = JSON.parse(json);
+  if (!Array.isArray(arr)) throw new Error('Invalid format: expected array');
+  return arr.map((p: any) => ({
+    ...p,
+    id: nanoid(8),
+    createdAt: p.createdAt || new Date().toISOString(),
+    isDefault: false,
+  }));
 }
 
 /** 读取当前 config.toml 的全局值（作为 UI 展示 & 默认值参考） */

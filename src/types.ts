@@ -44,6 +44,8 @@ export interface AppStore {
   } | null;
   history?: AppHistoryEntry[];
   testResults?: Record<string, string>;
+  /** 每个 profile 最后一次测试的耗时 (ms) */
+  testDurations?: Record<string, number>;
 }
 
 export type View = 'main' | 'list' | 'config' | 'add' | 'edit' | 'test';

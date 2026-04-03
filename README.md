@@ -1,75 +1,204 @@
-# Codex Start
+<p align="center">
+  <strong>Codex Start</strong><br/>
+  <sub>Interactive TUI Manager for Codex API Profiles</sub>
+</p>
 
-**Codex Start** 是一个基于命令行的交互式 TUI 工具，用于管理和测试 Codex API 的配置文件。它提供了类似于现代图形化应用的高质量界面，同时可以方便地运行在任何终端环境中。
+<p align="center">
+  <a href="#quickstart">Quickstart</a> &middot;
+  <a href="#cli-reference">CLI Reference</a> &middot;
+  <a href="#keyboard-shortcuts">Shortcuts</a> &middot;
+  <a href="#architecture">Architecture</a>
+</p>
 
-该工具具有丰富的功能，支持多配置管理、测试全局网络连通性、批量测试以及详细参数的高级操作编辑，为你日常进行大模型配置提供快捷便利的界面。
+---
 
-## 特性
+**Codex Start** (`cs`) 是一个终端原生的多 Profile 管理器，为 [OpenAI Codex CLI](https://github.com/openai/codex) 提供开箱即用的配置切换、连接测试和参数覆盖能力。
 
-- **配置管理**：直观的菜单导航添加、删除修改 Codex 配置的各项参数。
-- **动态覆盖（Overrides）**：专业的工程化数据面板，轻松设置多项进阶参数。
-- **批量并发测试**：内建支持对多套配置连接性进行并行检测。
-- **支持全局热键与本地化**：中英双语即时切换，底部常驻状态栏全局指引操作。
+使用 [Ink](https://github.com/vadimdemedes/ink) (React for CLI) 构建，运行在任何支持 Node.js 的终端上。
 
-## 安装说明
+### 解决什么问题
 
-因为该项目配置了可执行脚本命令，最推荐的方式是直接通过 `npm` 全局安装，安装完毕后即可在系统的任何地方使用 `cs` 命令启动面板。
+Codex CLI 依赖 `~/.codex/config.toml` + `auth.json` 做全局配置。当你需要在多个 API provider / model / 参数组合间频繁切换时，手动编辑文件既繁琐又容易出错。
 
-### 通过 npm 安装
+`cs` 把每套配置封装为 **Profile**，启动时自动注入对应的 `config.toml` + `auth.json`，用完自动还原。
+
+---
+
+## Features
+
+| 能力 | 说明 |
+|------|------|
+| **多 Profile 管理** | 增 / 删 / 改 / 克隆 / 排序 / 设默认，每个 Profile 独立保存 URL + Key + 全部参数覆盖 |
+| **一键启动** | `cs` 启动默认 Profile；`cs 2` 按序号；`cs run deepseek` 按名称模糊匹配 |
+| **连接测试** | 单个 / 批量测试，含耗时统计、15s 超时保护、结果持久化 |
+| **参数覆盖** | 40+ 配置项分 11 个分类，支持 Profile 局部覆盖与全局同步 |
+| **模型自动发现** | 编辑 model 字段时可直接调用 `GET /v1/models` 拉取 provider 实际支持的模型列表 |
+| **配置预览** | 注入前预览完整 `config.toml` 快照，高亮被 Profile 覆盖的字段 |
+| **导入 / 导出** | JSON 格式，导出时 API Key 自动掩码，方便团队共享 |
+| **模糊搜索** | `cs list` 中按 `/` 实时过滤 Profile 列表 |
+| **历史快照** | 每次写入全局配置自动快照，支持一键回滚到任意历史版本 |
+| **中 / 英双语** | `l` 键即时切换界面语言 |
+
+---
+
+## Quickstart
+
+### 安装
 
 ```bash
+# 全局安装（推荐）
 npm install -g codex-start
-```
-> **提示**: 如果发现包被占用或名称有变更，请根据实际仓库在 npm 发布的包名进行调整（例如 `npm install -g @你的用户名/codex-start`）。
 
-### 源码本地安装 (用于开发、调试)
-
-1. 克隆代码仓库：
-```bash
-git clone <你的 GitHub 仓库地址>
-cd codex-start
+# 或从源码
+git clone https://github.com/sunbigfly/codex-start.git
+cd codex-start && npm install && npm link
 ```
 
-2. 安装依赖并创建本地链接：
-```bash
-npm install
-npm link
-```
-
-## 使用指引
-
-无论是通过 `npm link` 还是全局安装之后，你都可以直接在终端运行以下命令来启动配置面板:
+### 30 秒上手
 
 ```bash
+# 1. 添加第一个 Profile
+cs add
+
+# 2. 查看所有 Profile
+cs list
+
+# 3. 直接启动默认 Profile
 cs
+
+# 4. 进入配置管理面板
+cs config
 ```
-*或者你在本地运行未经 link 的版本：*
+
+---
+
+## CLI Reference
+
+```
+cs                       启动默认 Profile
+cs <N>                   按序号启动（如 cs 2）
+cs run <name>            按名称模糊匹配启动
+cs list | ls             交互式 Profile 列表
+cs config | c            配置管理 TUI
+cs add                   添加新 Profile
+cs test                  连接性测试
+cs export [path]         导出 Profiles（API Key 掩码）
+cs import <path>         从 JSON 文件导入 Profiles
+```
+
+---
+
+## Keyboard Shortcuts
+
+### `cs list` -- Profile 列表
+
+```
+Enter        启动选中 Profile
+e            编辑
+a            添加
+c            克隆
+t            测试连接
+x            导出
+/            搜索过滤
+Space        设为默认
+J / K        上移 / 下移排序
+Esc          退出
+```
+
+### `cs config` -- 参数面板
+
+**左栏 (Profile 列表)**
+
+```
+Enter / ->   进入右栏编辑
+a            添加     c   克隆     d   删除
+t            测试     x   导出     h   历史回滚
+Space        设默认   l   切换语言
+J / K        排序     Esc 退出
+```
+
+**右栏 (参数覆盖)**
+
+```
+Enter / ->   编辑当前字段值
+g            同步专属值到全局 config.toml
+p            预览注入后的完整配置
+Tab          跳转下一分类
+Up / Down    逐项导航
+l            切换语言
+Esc / <-     返回左栏
+```
+
+### 测试面板
+
+```
+b            切换 Single / Batch 模式
+Enter        开始测试
+Space        勾选 / 取消 Profile（Batch 模式）
+a            全选 / 全不选
+u / i        Unified Model / Per-profile 策略
+Tab / ->     切换到模型选择区
+Esc          返回
+```
+
+---
+
+## Architecture
+
+```
+codex-start/
+  bin/cs.js              入口：tsx 透传启动 app.tsx
+  src/
+    app.tsx              CLI 路由 + cs list TUI
+    utils.ts             maskApiKey / fuzzyMatch 工具
+    store.ts             JSON 持久化 (~/.codex-start/data.json)
+    injector.ts          config.toml + auth.json 注入 / 还原
+    theme.ts             Catppuccin Mocha 色板 + 符号表
+    types.ts             Profile / AppStore 类型定义
+    components/
+      ConfigUI.tsx       cs config 主控组件
+      config/
+        constants.ts     40+ 字段定义 + 模型列表 + 分类
+        OverridesPanel.tsx  参数覆盖表格（滚动视口）
+        FieldEditor.tsx  字段编辑器（text/select/combo/bool + Fetch Models）
+        panels/
+          AddProfilePanel.tsx   添加 Profile 向导
+          DeleteProfilePanel.tsx 删除确认
+          HistoryPanel.tsx       历史快照列表
+          TestUI.tsx             单测 / 批量测试面板
+```
+
+### 数据流
+
+```
+Profile 选择 --> injectProfile() --> 写 ~/.codex/config.toml + auth.json
+                                      |
+                                      v
+                               spawn('codex', args)
+                                      |
+                                      v
+                               退出后 restoreBackup() --> 还原为原始配置
+```
+
+---
+
+## 配置存储
+
+| 路径 | 用途 |
+|------|------|
+| `~/.codex-start/data.json` | Profiles / 备份快照 / 测试结果 / 历史记录 |
+| `~/.codex/config.toml` | Codex CLI 运行时配置（启动时注入，退出后还原） |
+| `~/.codex/auth.json` | API Key 注入点 |
+
+---
+
+## 发布到 npm
+
 ```bash
-npm run dev
+npm login        # 首次
+npm publish      # package.json 已配置 files: [bin, src]
 ```
 
-在 TUI 界面中:
-- ⬆️ / ⬇️ 用以在配置列表中导航。
-- `Enter` 键以选中进入某个配置管理面板。
-- `c` 键进入 `Global Options` 测试连接性与批量测试面板。
-- `n` 键新建配置文件。
-- `d` 键快速删除配置（当前选中的）。
-- `l` 键切换中英双语界面。
-- 按压 `q` 或者 `Esc` 退出界面。
+## License
 
-## 获取与发布配置
-
-本工具已经基于 `package.json` 写定 `files` 字段，确保当你敲下 `npm publish` 获取的时候会完整上传构建所需核心文件：
-
-1. 如果你还未登录 npm 账号：
-   ```bash
-   npm login
-   ```
-2. 直接向官方仓库发布包：
-   ```bash
-   npm publish
-   ```
-
-## 开源协议
-
-ISC License.
+MIT

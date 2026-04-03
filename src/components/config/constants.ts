@@ -8,6 +8,15 @@ export interface FieldDef {
   options?: string[];
 }
 
+// Source: https://developers.openai.com/codex/models (2026-04)
+export const CODEX_MODELS = {
+  recommended: ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex', 'gpt-5.3-codex-spark'],
+  alternative: ['o4-mini', 'gpt-5.2-codex', 'gpt-5.2', 'gpt-5.1-codex-max', 'gpt-5.1', 'gpt-5.1-codex', 'gpt-5-codex', 'gpt-5-codex-mini'],
+  legacy: ['o3', 'o1', 'o3-mini', 'gpt-4o', 'gpt-4.5-preview'],
+  thirdParty: ['claude-3.7-sonnet', 'claude-3.5-sonnet', 'deepseek-chat', 'deepseek-reasoner', 'qwen-max', 'gemini-2.5-pro'],
+};
+export const ALL_MODELS = [...CODEX_MODELS.recommended, ...CODEX_MODELS.alternative, ...CODEX_MODELS.legacy, ...CODEX_MODELS.thirdParty];
+
 export const TABS = [
   { id: 'cfg_profile', title: '基础:连接配置' },
   { id: 'cfg_model', title: '核心:大模型' },
@@ -29,7 +38,7 @@ export const OVERRIDE_FIELDS: FieldDef[] = [
   { key: 'api_key', label: 'API Key', desc: '用于安全请求远程模型 API 服务的认证密钥 (Bearer Token)', descEn: 'Authentication bearer token used to prove your identity when requesting the remote API', type: 'text', group: 'cfg_profile' },
 
   // config.toml - Language Model API
-  { key: 'model', label: 'model', desc: '主流程处理节点所使用的底层核心语言模型架构标识符 (如 o3 / gpt-5.4)', descEn: 'Model the agent should use (e.g., o3, gpt-4o)', type: 'combo', options: ['o3', 'o1', 'o3-mini', 'gpt-4o', 'gpt-4.5-preview', 'claude-3.7-sonnet', 'claude-3.5-sonnet', 'deepseek-chat', 'deepseek-reasoner', 'qwen-max', 'gemini-2.5-pro'], group: 'cfg_model' },
+  { key: 'model', label: 'model', desc: '主流程处理节点所使用的底层核心语言模型架构标识符 (如 gpt-5.4)', descEn: 'Model the agent should use (e.g., gpt-5.4, o4-mini)', type: 'combo', options: ALL_MODELS, group: 'cfg_model' },
   { key: 'wire_api', label: 'wire_api', desc: '上报数据负载与流式解析时遵循的 API 报文规范标准 (Responses / Completions API)', descEn: 'Underlying protocol gateway (responses or completions)', type: 'select', options: ['responses', 'completions'], group: 'cfg_model' },
   { key: 'service_tier', label: 'service_tier', desc: '云端集群负载均衡分配策略参数：极速低延迟级 (fast) 或 均衡排队吞吐级 (flex)', descEn: 'Node routing tier layer: fast (high priority) or flex (batch load balancer)', type: 'select', options: ['fast', 'flex'], group: 'cfg_model' },
   { key: 'model_verbosity', label: 'model_verbosity', desc: '微调语言模型针对非代码会话上下文生成的连贯拓展与输出补充细节长篇程度限制', descEn: 'Controls the verbosity degree for conversational generations (low/medium/high)', type: 'select', options: ['low', 'medium', 'high'], group: 'cfg_model' },
