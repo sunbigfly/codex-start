@@ -4,7 +4,8 @@
   "description": "Interactive TUI manager for Codex API profiles",
   "type": "module",
   "bin": {
-    "cs": "./bin/cs.js"
+    "cs": "./bin/cs.js",
+    "codex-start": "./bin/cs.js"
   },
   "files": [
     "bin",
