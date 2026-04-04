@@ -38,6 +38,25 @@ Codex 默认依赖 `config.toml` 配置。当你在多个 API 提供商、不同
 
 ---
 
+## Screenshots / 界面预览
+
+**多 Profile 一览 (List UI)**
+![List UI](./res/image0.png)
+
+**沉浸式参数面板 (Config UI)**
+![Config UI](./res/image1.png)
+
+**模型连通性测速 (Test Panel)**
+![Test Panel](./res/image2.png)
+
+**快照与历史回滚 (History Rollback)**
+![History Rollback](./res/image3.png)
+
+**交互式帮助手册 (Help & Manual)**
+![Help & Manual](./res/image4.png)
+
+---
+
 ## Quickstart
 
 **全局安装**
