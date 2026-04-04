@@ -40,15 +40,7 @@ Codex 默认依赖 `config.toml` 配置。当你在多个 API 提供商、不同
 
 ## Quickstart
 
-**零感体验（推荐）**
-
-仅需 Node.js 即可直接无痕运行：
-
-```bash
-npx codex-start
-```
-
-**传统全局安装**
+**全局安装**
 
 ```bash
 # 全局安装 (NPM)
