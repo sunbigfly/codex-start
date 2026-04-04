@@ -26,6 +26,8 @@ function readPreservedSections(): Record<string, any> {
   return preserved;
 }
 
+import { OVERRIDE_FIELDS } from './components/config/constants.js';
+
 /** 注入 profile 到 config.toml 和 auth.json，只覆盖有值的字段 */
 export function injectProfile(profile: Profile): void {
   ensureDir(CODEX_DIR);
@@ -48,24 +50,27 @@ export function injectProfile(profile: Profile): void {
   config.model_providers.custom.wire_api = profile.wire_api || 'responses';
   config.model_providers.custom.requires_openai_auth = true;
 
-  // 可选覆盖：有值才写，空字符串不动
-  const optionals: [string, string][] = [
-    ['model', profile.model],
-    ['model_reasoning_effort', profile.model_reasoning_effort],
-    ['personality', profile.personality],
-    ['model_reasoning_summary', profile.model_reasoning_summary],
-    ['service_tier', profile.service_tier],
-    ['approval_policy', profile.approval_policy],
-    ['sandbox_mode', profile.sandbox_mode],
-    ['web_search', profile.web_search],
-  ];
-  for (const [key, val] of optionals) {
-    if (val) config[key] = val;
-  }
+  // 根据 constants 中定义的所有选项来进行动态多级路径覆盖
+  for (const field of OVERRIDE_FIELDS) {
+    if (!field.group?.startsWith('cfg_')) continue; // 只有 cfg_ 组才落盘 config.toml
 
-  // disable_response_storage 特殊处理（boolean）
-  if (profile.disable_response_storage === 'true') config.disable_response_storage = true;
-  else if (profile.disable_response_storage === 'false') config.disable_response_storage = false;
+    const val = profile[field.key];
+    if (val !== undefined && val !== '') {
+       let finalVal: any = val;
+       if (field.type === 'bool') {
+          finalVal = (val === 'true' || val === true);
+       }
+       
+       // 根据 key 拆分路径，例如 "features.prevent_idle_sleep" -> { features: { prevent_idle_sleep: ... } }
+       const parts = field.label.startsWith('features.') ? field.label.split('.') : field.key.split('.');
+       let cur = config;
+       for (let i = 0; i < parts.length - 1; i++) {
+         if (!cur[parts[i]]) cur[parts[i]] = {};
+         cur = cur[parts[i]];
+       }
+       cur[parts[parts.length - 1]] = finalVal;
+    }
+  }
 
   // 合并保留的 section（trust 等），profile 字段优先
   const preserved = readPreservedSections();
