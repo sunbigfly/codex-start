@@ -39,14 +39,9 @@ export function computeNavWidth(
   names: string[],
   prefixChars: number = 6,
   suffixChars: number = 0,
-  minWidth: number = 24,
+  minWidth: number = 36,
 ): number {
-  const maxNameW = names.length > 0
-    ? Math.max(...names.map(computeDisplayWidth))
-    : 0;
-  // " Profiles" 标题宽度 = 9
-  const headerW = 9;
-  const contentW = Math.max(headerW, prefixChars + maxNameW + suffixChars);
-  const totalW = contentW + 3 + 1 + 1; // padding(3) + border(1) + safety(1)
-  return Math.max(minWidth, totalW);
+  // 固定左侧导航栏宽度为 36，彻底杜绝不同页面/状态之间因为前缀后缀参数差异导致的布局抖动
+  // 结合之前的 wrap="truncate-end" 可以在名称非常长时优雅截断
+  return minWidth;
 }

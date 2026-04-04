@@ -22,12 +22,20 @@ export interface Profile {
   [key: string]: any; // Allow arbitrary override fields without breaking types
 }
 
+export interface HistoryDelta {
+  type: 'profile' | 'global' | 'system';
+  target?: string;
+  changes: { key: string; from: any; to: any }[];
+}
+
 export interface AppHistoryEntry {
   id: string;
   timestamp: string;
   message: string;
   authJson: Record<string, unknown>;
   configToml: string;
+  profiles?: Profile[];
+  delta?: HistoryDelta;
 }
 
 export interface AppStore {

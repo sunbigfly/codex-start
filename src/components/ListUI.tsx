@@ -4,11 +4,12 @@ import TextInput from 'ink-text-input';
 import SelectInput from 'ink-select-input';
 import { colors, symbols, applyTheme, themeOptions } from '../theme.js';
 import type { Profile, AppStore } from '../types.js';
-import { readCurrentConfig, saveStore, cloneProfile, exportProfiles } from '../store.js';
+import { readCurrentConfig, saveStore } from '../store.js';
 import { fuzzyMatch, computeNavWidth } from '../utils.js';
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { RainbowText } from './RainbowText.js';
+import { HelpUI } from './config/panels/HelpUI.js';
+
+import { HeaderLogo } from './HeaderLogo.js';
 
 export type ListAction = 
   | { type: 'launch'; profileId: string }
@@ -29,6 +30,7 @@ export function ListUI({ store, onUpdate, onAction }: Props) {
   const [searchMode, setSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMsg, setToastMsg] = useState('');
+  const [helpMode, setHelpMode] = useState(false);
 
   // 搜索过滤
   const filteredProfiles = useMemo(() => {
@@ -43,6 +45,8 @@ export function ListUI({ store, onUpdate, onAction }: Props) {
   };
 
   useInput((input: string, key: any) => {
+    if (helpMode) return; // 让 HelpUI 自己接管它的关闭
+
     if (searchMode) {
       if (key.escape) { setSearchMode(false); setSearchQuery(''); return; }
       if (key.return && filteredProfiles.length > 0) {
@@ -53,12 +57,18 @@ export function ListUI({ store, onUpdate, onAction }: Props) {
       return;
     }
     if (key.escape) onAction({ type: 'exit' });
-    if (input === 'a' || input === 'A') {
+    const lcInput = input.toLowerCase();
+
+    if (lcInput === 'a') {
       onAction({ type: 'add' });
     }
     if (input === '/') {
       setSearchMode(true);
       setSearchQuery('');
+      return;
+    }
+    if (input === '?' || input === '？') {
+      setHelpMode(true);
       return;
     }
     if (input === ' ' && highlightedId) {
@@ -73,52 +83,13 @@ export function ListUI({ store, onUpdate, onAction }: Props) {
         showToast(`"${p.name}" 已设为默认`);
       }
     }
-    if ((input === 'e' || input === 'E') && highlightedId) {
+    if (lcInput === 'e' && highlightedId) {
       onAction({ type: 'edit', profileId: highlightedId });
     }
-    if ((input === 't' || input === 'T')) {
+    if (lcInput === 't') {
       onAction({ type: 'test' });
     }
-    if ((input === 'c' || input === 'C') && highlightedId) {
-      const source = store.profiles.find(p => p.id === highlightedId);
-      if (source) {
-        const cloned = cloneProfile(source);
-        const updated = { ...store, profiles: [...store.profiles, cloned] };
-        onUpdate(updated);
-        saveStore(updated);
-        showToast(`已克隆 "${source.name}" -> "${cloned.name}"`);
-      }
-    }
-    if (input === 'x' || input === 'X') {
-      const json = exportProfiles(store.profiles);
-      const exportPath = join(homedir(), '.codex-start', 'profiles-export.json');
-      writeFileSync(exportPath, json + '\n');
-      showToast(`已导出 ${store.profiles.length} 个 profiles -> ${exportPath}`);
-    }
-    // J/K 排序
-    if (input === 'J' && highlightedId) {
-      const idx = store.profiles.findIndex(p => p.id === highlightedId);
-      if (idx >= 0 && idx < store.profiles.length - 1) {
-        const newProfiles = [...store.profiles];
-        [newProfiles[idx], newProfiles[idx + 1]] = [newProfiles[idx + 1], newProfiles[idx]];
-        const updated = { ...store, profiles: newProfiles };
-        onUpdate(updated);
-        saveStore(updated);
-        showToast(`"${store.profiles[idx].name}" 已下移`);
-      }
-    }
-    if (input === 'K' && highlightedId) {
-      const idx = store.profiles.findIndex(p => p.id === highlightedId);
-      if (idx > 0) {
-        const newProfiles = [...store.profiles];
-        [newProfiles[idx], newProfiles[idx - 1]] = [newProfiles[idx - 1], newProfiles[idx]];
-        const updated = { ...store, profiles: newProfiles };
-        onUpdate(updated);
-        saveStore(updated);
-        showToast(`"${store.profiles[idx].name}" 已上移`);
-      }
-    }
-    if (input === 'W') {
+    if (lcInput === 'w') {
       const currentTheme = store.globalTheme || 'mocha';
       const idx = themeOptions.indexOf(currentTheme);
       const nextTheme = themeOptions[(idx + 1) % themeOptions.length];
@@ -131,16 +102,21 @@ export function ListUI({ store, onUpdate, onAction }: Props) {
     }
   });
 
+  if (helpMode) {
+    return <HelpUI onClose={() => setHelpMode(false)} themeName={store.globalTheme || 'mocha'} uiMode="list" />;
+  }
+
   if (store.profiles.length === 0) {
     return (
       <Box padding={1} flexDirection="column" gap={1}>
+        <HeaderLogo themeName={store.globalTheme || 'mocha'} />
         <Box>
           <Text color={colors.muted}>No profiles. Run </Text>
           <Text color={colors.primary}>cs config</Text>
           <Text color={colors.muted}> to add.</Text>
         </Box>
         <Box gap={2} flexWrap="wrap">
-          <Text color={colors.dim}>[a] Add profile  [Esc] Exit</Text>
+          <Text color={colors.dim}>[a] Add profile  [h/?] Help  [Esc] Exit</Text>
         </Box>
       </Box>
     );
@@ -167,13 +143,14 @@ export function ListUI({ store, onUpdate, onAction }: Props) {
 
   return (
     <Box flexDirection="column" padding={1}>
-      <Box marginBottom={1}>
-        <Text color={colors.accent} bold>{symbols.dot} Codex Profiles</Text>
+      <HeaderLogo themeName={store.globalTheme || 'mocha'} />
+      <Box marginBottom={1} marginTop={1}>
+        <Text color={colors.accent} bold>{symbols.dot} Codex-Start Profiles</Text>
       </Box>
 
       <Box borderStyle="round" borderColor={colors.dim} flexDirection="row" width="100%">
         {/* Left: profile list */}
-        <Box flexDirection="column" width={computeNavWidth(store.profiles.map(p => p.name), 9, 7)} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} borderColor={colors.dim} padding={1} paddingRight={2}>
+        <Box flexDirection="column" width={computeNavWidth(store.profiles.map(p => p.name), 12, 14)} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} borderColor={colors.dim} padding={1} paddingRight={2}>
           <Text color={colors.muted} bold> Profiles</Text>
 
           {searchMode && (
@@ -190,15 +167,19 @@ export function ListUI({ store, onUpdate, onAction }: Props) {
               ) : (
                 filteredProfiles.map((p, i) => (
                   <Box key={p.id}>
-                    <Text>
+                    <Text wrap="truncate-end">
                       <Text color={i === 0 ? colors.primary : colors.dim}>{i === 0 ? `${symbols.arrow} ` : '  '}</Text>
                       <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '   '}</Text>
+                      {i === 0 ? (
+                        <RainbowText text={p.name} bold />
+                      ) : (
+                        <Text color={colors.muted}>{p.name}</Text>
+                      )}
                       <Text>
-                        {store.testResults && store.testResults[p.id] === 'ok' ? <Text color={colors.success}>{`${symbols.check} `}</Text> :
-                         store.testResults && store.testResults[p.id] === 'fail' ? <Text color={colors.danger}>{`${symbols.cross} `}</Text> :
-                         <Text>{'  '}</Text>}
+                        {store.testResults && store.testResults[p.id] === 'ok' ? <Text color={colors.success}>{` ${symbols.check}`}</Text> :
+                         store.testResults && store.testResults[p.id] === 'fail' ? <Text color={colors.danger}>{` ${symbols.cross}`}</Text> :
+                         <Text>{''}</Text>}
                       </Text>
-                      <Text color={i === 0 ? colors.text : colors.muted}>{p.name}</Text>
                       {store.testResults && (store.testResults[p.id] === 'ok' || store.testResults[p.id] === 'fail') && <Text color={colors.dim}> {store.testDurations && store.testDurations[p.id] ? `${(store.testDurations[p.id]/1000).toFixed(1)}s` : ''}</Text>}
                     </Text>
                   </Box>
@@ -219,14 +200,18 @@ export function ListUI({ store, onUpdate, onAction }: Props) {
                   if (!p) return <Text>{label}</Text>;
                   return (
                     <Box>
-                      <Text>
+                      <Text wrap="truncate-end">
                         <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '   '}</Text>
+                        {isSelected ? (
+                          <RainbowText text={p.name} bold />
+                        ) : (
+                          <Text color={colors.muted}>{p.name}</Text>
+                        )}
                         <Text>
-                          {store.testResults && store.testResults[p.id] === 'ok' ? <Text color={colors.success}>{`${symbols.check} `}</Text> :
-                           store.testResults && store.testResults[p.id] === 'fail' ? <Text color={colors.danger}>{`${symbols.cross} `}</Text> :
-                           <Text>{'  '}</Text>}
+                          {store.testResults && store.testResults[p.id] === 'ok' ? <Text color={colors.success}>{` ${symbols.check}`}</Text> :
+                           store.testResults && store.testResults[p.id] === 'fail' ? <Text color={colors.danger}>{` ${symbols.cross}`}</Text> :
+                           <Text>{''}</Text>}
                         </Text>
-                        <Text color={isSelected ? colors.text : colors.muted} bold={isSelected}>{p.name}</Text>
                         {store.testResults && (store.testResults[p.id] === 'ok' || store.testResults[p.id] === 'fail') && <Text color={colors.dim}> {store.testDurations && store.testDurations[p.id] ? `${(store.testDurations[p.id]/1000).toFixed(1)}s` : ''}</Text>}
                       </Text>
                     </Box>
@@ -309,10 +294,13 @@ export function ListUI({ store, onUpdate, onAction }: Props) {
       </Box>
 
       <Box gap={2} flexWrap="wrap">
-        <Text color={colors.dim}>[Enter] Launch</Text>
-        <Text color={colors.dim}>[e] Edit  [a] Add  [c] Clone</Text>
-        <Text color={colors.dim}>[t] Test  [x] Export  [/] Search</Text>
-        <Text color={colors.dim}>[J/K] Reorder  [Space] Default  [W] Theme  [Esc] Exit</Text>
+        <Text color={colors.dim}>[Enter] Launch  [/] Search</Text>
+        <Text color={colors.dim}>[a] Add  [e] Edit  [t] Test</Text>
+        <Text color={colors.dim}>[Space] Default  [w] Theme</Text>
+        <Text>
+          <Text color={colors.accent} bold>[?] Help</Text>
+          <Text color={colors.dim}>  [Esc] Exit</Text>
+        </Text>
       </Box>
     </Box>
   );

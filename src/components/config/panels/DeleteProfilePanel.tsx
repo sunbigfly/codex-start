@@ -4,18 +4,19 @@ import { colors, symbols } from '../../../theme.js';
 import type { Profile } from '../../../types.js';
 
 export function DeleteProfilePanel({
-  profile,
+  profiles,
   onConfirm,
   onCancel
 }: {
-  profile: Profile;
+  profiles: Profile[];
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   useInput((input, key) => {
-    if (key.escape || input === 'n' || input === 'N') {
+    const lcInput = input.toLowerCase();
+    if (key.escape || lcInput === 'n') {
       onCancel();
-    } else if (input === 'y' || input === 'Y' || key.return) {
+    } else if (lcInput === 'y' || key.return) {
       onConfirm();
     }
   });
@@ -24,7 +25,11 @@ export function DeleteProfilePanel({
     <Box flexDirection="column" padding={1}>
       <Text color={colors.danger} bold>{symbols.dot} Delete Profile</Text>
       <Box marginTop={1} gap={1} flexDirection="column">
-        <Text color={colors.warning}>Are you sure you want to delete profile "{profile.name}"?</Text>
+        {profiles.length === 1 ? (
+          <Text color={colors.warning}>Are you sure you want to delete profile "{profiles[0].name}"?</Text>
+        ) : (
+          <Text color={colors.warning}>Are you sure you want to delete {profiles.length} selected profiles?</Text>
+        )}
       </Box>
       <Box marginTop={1} gap={2} flexWrap="wrap">
         <Text color={colors.dim}>[y/Enter] Confirm</Text>

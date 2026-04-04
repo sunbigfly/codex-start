@@ -12,6 +12,7 @@ import type { Profile, AppStore } from './types.js';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import cfonts from 'cfonts';
 import omelette from 'omelette';
 
 const comp = omelette('cs|codex-start <action> <profile>');
@@ -30,6 +31,8 @@ comp.on('profile', ({ reply, line }) => {
   }
 });
 comp.init();
+
+// 去除 launch 时的庞大 Logo 输出
 
 // --- 启动信息打印 ---
 
@@ -54,7 +57,6 @@ function launchCodex(profile: Profile) {
   // 1. 设置终端标题
   process.stdout.write(`\x1b]0;Codex [cs]: ${profile.name}\x07`);
 
-  // 2. 覆盖 "$ cs" 那一行，显示 profile 摘要（上移一行 + 清行 + 写入）
   const sep = ' \x1b[38;5;240m|\x1b[0m ';
   const parts = [
     `\x1b[1m${profile.name}\x1b[0m`,
@@ -63,7 +65,7 @@ function launchCodex(profile: Profile) {
     cfgModel ? `\x1b[38;5;147m${cfgModel}\x1b[0m` : '',
     cfgEffort ? `\x1b[38;5;215m${cfgEffort}\x1b[0m` : '',
   ].filter(Boolean).join(sep);
-  process.stdout.write(`\x1b[1A\x1b[2K\r\x1b[38;5;45m[cs]\x1b[0m ${parts}\n`);
+  process.stdout.write(`\x1b[38;5;45m[cs]\x1b[0m ${parts}\n\n`);
 
   const child = spawn('codex', args, { stdio: 'inherit' });
   
@@ -258,6 +260,8 @@ async function main() {
     while (true) {
       let resolvedAction: ListAction | undefined;
       
+      console.clear();
+      
       const { waitUntilExit } = render(
         <ListAppWrapper onAction={(a) => { resolvedAction = a; }} />
       );
@@ -273,18 +277,22 @@ async function main() {
         if (p) launchCodex(p);
         return;
       } else if (act.type === 'edit') {
+        console.clear();
         const { waitUntilExit: wExit } = render(<ConfigApp cmd="config" editId={act.profileId} />);
         await wExit();
       } else if (act.type === 'add') {
+        console.clear();
         const { waitUntilExit: wExit } = render(<ConfigApp cmd="add" />);
         await wExit();
       } else if (act.type === 'test') {
+        console.clear();
         const { waitUntilExit: wExit } = render(<ConfigApp cmd="test" />);
         await wExit();
       }
     }
   }
 
+  console.clear();
   const { waitUntilExit } = render(<ConfigApp cmd={cmd} />);
   await waitUntilExit();
 }

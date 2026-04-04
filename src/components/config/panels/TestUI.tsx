@@ -8,6 +8,10 @@ import { ALL_MODELS } from '../constants.js';
 import { ensureBackup, loadStore } from '../../../store.js';
 import { restoreBackup, injectProfile } from '../../../injector.js';
 import { computeNavWidth } from '../../../utils.js';
+import { RainbowText } from '../../RainbowText.js';
+import { HelpUI } from './HelpUI.js';
+
+import { HeaderLogo } from '../../HeaderLogo.js';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 function useSpinner() {
@@ -53,6 +57,7 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
   const [batchStrategy, setBatchStrategy] = useState<'unified' | 'individual'>('unified');
   const [phase, setPhase] = useState<'setup' | 'running' | 'done'>('setup');
   const [customInput, setCustomInput] = useState(false);
+  const [helpMode, setHelpMode] = useState(false);
   const [customModel, setCustomModel] = useState('');
   const [singleOutput, setSingleOutput] = useState('');
   const [batchOutputs, setBatchOutputs] = useState<Record<string, string[]>>({});
@@ -272,6 +277,8 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
 
   // Input
   useInput((input: string, key: any) => {
+    if (helpMode) return; // 让 HelpUI 自己接管它的关闭
+
     if (phase === 'running') {
       if (key.escape) {
         abortControllerRef.current?.abort();
@@ -281,7 +288,14 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
     if (phase === 'done') { if (key.escape) setPhase('setup'); return; }
     if (customInput) { if (key.escape) setCustomInput(false); return; }
 
-    if (input === 'b') { setMode(m => m === 'single' ? 'batch' : 'single'); return; }
+    if (input === '?' || input === '？') {
+      setHelpMode(true);
+      return;
+    }
+
+    const lcInput = input.toLowerCase();
+
+    if (lcInput === 'b') { setMode(m => m === 'single' ? 'batch' : 'single'); return; }
     if (key.escape) { focus === 'right' ? setFocus('left') : onCancel(); return; }
 
     if (focus === 'left') {
@@ -293,7 +307,7 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
         setChecked(prev => ({ ...prev, [p.id]: !prev[p.id] }));
         return;
       }
-      if (input === 'a' && mode === 'batch') {
+      if (lcInput === 'a' && mode === 'batch') {
         const all = profiles.every(p => checked[p.id]);
         setChecked(Object.fromEntries(profiles.map(p => [p.id, !all])));
         return;
@@ -306,8 +320,8 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
 
     if (focus === 'right') {
       if (key.leftArrow) { setFocus('left'); return; }
-      if (mode === 'batch' && input === 'u') { setBatchStrategy('unified'); return; }
-      if (mode === 'batch' && input === 'i') { setBatchStrategy('individual'); return; }
+      if (mode === 'batch' && lcInput === 'u') { setBatchStrategy('unified'); return; }
+      if (mode === 'batch' && lcInput === 'i') { setBatchStrategy('individual'); return; }
       const showList = mode === 'single' || batchStrategy === 'unified';
       if (showList) {
         if (key.upArrow) { setModelIdx(i => Math.max(0, i - 1)); return; }
@@ -335,9 +349,14 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
   const runningN = targets.filter(p => testResults[p.id] === 'running').length;
   const pendingN = targets.length - okN - failN - runningN;
 
+  if (helpMode) {
+    return <HelpUI onClose={() => setHelpMode(false)} themeName={globalConfig.globalTheme || 'mocha'} uiMode="test" />;
+  }
+
   return (
     <Box flexDirection="column" padding={1}>
-      <Box marginBottom={1} gap={2}>
+      <HeaderLogo themeName={globalConfig.globalTheme || 'mocha'} />
+      <Box marginBottom={1} marginTop={1} gap={2}>
         <Text color={colors.accent} bold>{symbols.dot} Connectivity Test</Text>
         <Text color={mode === 'single' ? colors.primary : colors.dim} bold={mode === 'single'}>[Single]</Text>
         <Text color={mode === 'batch' ? colors.primary : colors.dim} bold={mode === 'batch'}>[Batch]</Text>
@@ -345,25 +364,29 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
 
       <Box borderStyle="round" borderColor={colors.dim} flexDirection="row" width="100%">
         {/* Left: Profiles */}
-        <Box flexDirection="column" width={computeNavWidth(profiles.map(p => p.name), 13, 7)} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} borderColor={colors.dim} padding={1} paddingRight={2}>
+        <Box flexDirection="column" width={computeNavWidth(profiles.map(p => p.name), mode === 'batch' ? 14 : 10, 10)} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} borderColor={colors.dim} padding={1} paddingRight={2}>
           <Text color={colors.muted} bold>Profiles</Text>
           <Box marginTop={1} flexDirection="column">
             {profiles.map((p, i) => {
               const hl = i === profileIdx;
               const res = testResults[p.id];
               return (
-                <Box key={p.id} gap={1}>
-                  <Text>
+                <Box key={p.id}>
+                  <Text wrap="truncate-end">
                     {focus === 'left' && hl ? <Text color={colors.primary}>{`${symbols.arrow} `}</Text> : <Text>{'  '}</Text>}
                     {mode === 'batch' && <Text color={checked[p.id] ? colors.success : colors.dim}>{`[${checked[p.id] ? 'x' : ' '}] `}</Text>}
                     <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '   '}</Text>
+                    {hl ? (
+                      <RainbowText text={p.name} bold={focus === 'left'} />
+                    ) : (
+                      <Text color={colors.muted}>{p.name}</Text>
+                    )}
                     <Text>
-                      {res === 'ok' ? <Text color={colors.success}>{`${symbols.check} `}</Text> :
-                       res === 'fail' ? <Text color={colors.danger}>{`${symbols.cross} `}</Text> :
-                       res === 'running' ? <Text color={colors.warning}>{`${spinnerFrame} `}</Text> :
-                       <Text>{'  '}</Text>}
+                      {res === 'ok' ? <Text color={colors.success}>{` ${symbols.check}`}</Text> :
+                       res === 'fail' ? <Text color={colors.danger}>{` ${symbols.cross}`}</Text> :
+                       res === 'running' ? <Text color={colors.warning}>{` ${spinnerFrame}`}</Text> :
+                       <Text>{''}</Text>}
                     </Text>
-                    <Text color={hl && focus === 'left' ? colors.text : colors.muted}>{p.name}</Text>
                     {(res === 'ok' || res === 'fail') && <Text color={colors.dim}>{fmtDur(p.id)}</Text>}
                   </Text>
                 </Box>
@@ -437,6 +460,10 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
                     <Box flexDirection="column" minHeight={15}>
                       <Text color={phase === 'running' ? colors.text : colors.dim}>
                         {phase === 'running' ? `${spinnerFrame} ` : '  '}<Text color={colors.primary} bold>[{profiles[profileIdx]?.name}]</Text>
+                        {testResults[profiles[profileIdx]?.id] === 'ok' ? <Text color={colors.success}>{` ${symbols.check}`}</Text> :
+                         testResults[profiles[profileIdx]?.id] === 'fail' ? <Text color={colors.danger}>{` ${symbols.cross}`}</Text> :
+                         null}
+                        {(testResults[profiles[profileIdx]?.id] === 'ok' || testResults[profiles[profileIdx]?.id] === 'fail') && <Text color={colors.dim}>{fmtDur(profiles[profileIdx]?.id)}</Text>}
                       </Text>
                       {singleOutput ? singleOutput.trim().split('\n').filter(Boolean).slice(-15).map((line, i) => {
                         const safeLine = line.length > 80 ? line.slice(0, 77) + '...' : line;
@@ -463,7 +490,11 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
                       return (
                         <Box key={p.id} flexDirection="column" minHeight={5}>
                           <Text color={isRunning ? colors.text : colors.dim}>
-                            {isRunning ? `${spinnerFrame} ` : '  '}<Text color={colors.primary} bold>[{p.name}]</Text> 
+                            {isRunning ? `${spinnerFrame} ` : '  '}<Text color={colors.primary} bold>[{p.name}]</Text>
+                            {testResults[p.id] === 'ok' ? <Text color={colors.success}>{` ${symbols.check}`}</Text> :
+                             testResults[p.id] === 'fail' ? <Text color={colors.danger}>{` ${symbols.cross}`}</Text> :
+                             null}
+                            {(testResults[p.id] === 'ok' || testResults[p.id] === 'fail') && <Text color={colors.dim}>{fmtDur(p.id)}</Text>}
                           </Text>
                           {lines.map((l, idx) => {
                              // 切断 80 确保哪怕没有 Ink 原生保护终端，也不会自动变长软换行软换行抖动
@@ -490,19 +521,21 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
           <Text color={colors.dim}>{phase === 'running' ? '[Esc] Cancel' : '[Esc] Back'}</Text>
         ) : mode === 'single' ? (
           <>
-            <Text color={colors.dim}>[Enter] Test</Text>
-            <Text color={colors.dim}>[b] Batch mode</Text>
+            <Text color={colors.dim}>[Enter] Test  [b] Batch mode</Text>
             <Text color={colors.dim}>[Tab/Arrow] Select model</Text>
-            <Text color={colors.dim}>[Esc] Back</Text>
+            <Text>
+              <Text color={colors.accent} bold>[?] Help</Text>
+              <Text color={colors.dim}>  [Esc] Back</Text>
+            </Text>
           </>
         ) : (
           <>
-            <Text color={colors.dim}>[Enter] Run batch</Text>
-            <Text color={colors.dim}>[Space] Toggle</Text>
-            <Text color={colors.dim}>[a] All</Text>
-            <Text color={colors.dim}>[b] Single mode</Text>
-            <Text color={colors.dim}>[u/i] Strategy</Text>
-            <Text color={colors.dim}>[Esc] Back</Text>
+            <Text color={colors.dim}>[Enter] Run batch  [b] Single mode</Text>
+            <Text color={colors.dim}>[u/i] Strategy  [Space] Toggle  [a] All</Text>
+            <Text>
+              <Text color={colors.accent} bold>[?] Help</Text>
+              <Text color={colors.dim}>  [Esc] Back</Text>
+            </Text>
           </>
         )}
       </Box>

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { nanoid } from 'nanoid';
 import { parse, stringify } from 'smol-toml';
-import type { Profile, AppStore, AppHistoryEntry } from './types.js';
+import type { Profile, AppStore, AppHistoryEntry, HistoryDelta } from './types.js';
 
 
 const STORE_DIR = join(homedir(), '.codex-start');
@@ -56,13 +56,9 @@ export function cloneProfile(source: Profile): Profile {
   };
 }
 
-/** 导出 profiles 为 JSON 字符串（API Key 掩码） */
+/** 导出 profiles 为 JSON 字符串（保留明文 API Key） */
 export function exportProfiles(profiles: Profile[]): string {
-  const safe = profiles.map(p => ({
-    ...p,
-    api_key: p.api_key ? '********' : '',
-  }));
-  return JSON.stringify(safe, null, 2);
+  return JSON.stringify(profiles, null, 2);
 }
 
 /** 从 JSON 字符串导入 profiles，为每个生成新 ID */
@@ -85,24 +81,39 @@ export function readCurrentConfig(): Record<string, any> {
   } catch { return {}; }
 }
 
-export function pushHistory(store: AppStore, message: string): AppStore {
+export function pushHistory(store: AppStore, message: string, delta?: HistoryDelta): AppStore {
   const authJson = existsSync(AUTH_FILE) ? JSON.parse(readFileSync(AUTH_FILE, 'utf-8')) : {};
   const configToml = existsSync(CONFIG_FILE) ? readFileSync(CONFIG_FILE, 'utf-8') : '';
+  const currentProfiles = JSON.parse(JSON.stringify(store.profiles || []));
+  
+  if (store.history && store.history.length > 0) {
+    const last = store.history[0];
+    const sameAuth = JSON.stringify(last.authJson) === JSON.stringify(authJson);
+    const sameConfig = last.configToml === configToml;
+    const sameProfiles = JSON.stringify(last.profiles || []) === JSON.stringify(currentProfiles);
+    
+    // If we have a delta, we ALWAYS push even if states match (e.g. redundant but labelled operation)
+    if (!delta && sameAuth && sameConfig && sameProfiles) {
+      return store;
+    }
+  }
+
   const entry: AppHistoryEntry = {
     id: nanoid(8),
     timestamp: new Date().toISOString(),
     message,
     authJson,
     configToml,
+    profiles: currentProfiles,
+    delta,
   };
   store.history = store.history || [];
-  store.history.unshift(entry); // 最新的在前面
-  // 限制最多保存 20 条以防止文件过大
-  if (store.history.length > 20) {
-    store.history = store.history.slice(0, 20);
+  store.history.unshift(entry);
+  if (store.history.length > 50) {
+    store.history = store.history.slice(0, 50);
   }
   saveStore(store);
-  return store; // store 是引用的，可以直接返回
+  return store;
 }
 
 export function saveGlobalConfigField(fieldBaseKey: string, val: string | boolean): void {

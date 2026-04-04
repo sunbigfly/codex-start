@@ -15,6 +15,7 @@ const catppuccinMocha = {
   required: '#fab387',    // 清脆的桃橙色
   tab_active: '#cba6f7',
   tab_inactive: '#45475a',
+  logoGradient: ['#cba6f7', '#fab387'], // 💜 紫 -> 🍑 橘 (Vaporwave 既视感)
 };
 
 const nord = {
@@ -33,6 +34,7 @@ const nord = {
   required: '#D08770',
   tab_active: '#88C0D0',
   tab_inactive: '#3B4252',
+  logoGradient: ['#88C0D0', '#B48EAD'], // 🧊 冰青 -> 🍇 极光紫 (冷峻北欧风)
 };
 
 const dracula = {
@@ -51,6 +53,7 @@ const dracula = {
   required: '#ffb86c',
   tab_active: '#bd93f9',
   tab_inactive: '#44475a',
+  logoGradient: ['#ff79c6', '#8be9fd'], // 💝 骚粉 -> 💎 荧青 (经典赛博朋克)
 };
 
 const tokyoNight = {
@@ -69,6 +72,7 @@ const tokyoNight = {
   required: '#ff9e64',
   tab_active: '#7aa2f7',
   tab_inactive: '#24283b',
+  logoGradient: ['#7dcfff', '#bb9af7'], // 💧 亮青 -> 🌆 夜紫 (东京霓虹夜)
 };
 
 const themes: Record<string, typeof catppuccinMocha> = {

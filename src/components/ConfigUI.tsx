@@ -1,9 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Box, Text, useInput } from 'ink';
-import SelectInput from 'ink-select-input';
-import { colors, symbols, applyTheme, themeOptions } from '../theme.js';
+import { Box, Text } from 'ink';
+import { colors, symbols } from '../theme.js';
 import type { Profile, AppStore } from '../types.js';
-import { readCurrentConfig, createProfile, pushHistory, saveGlobalConfigField, cloneProfile, exportProfiles } from '../store.js';
+import { readCurrentConfig, pushHistory } from '../store.js';
 import { computeNavWidth } from '../utils.js';
 import { OVERRIDE_FIELDS, getGlobalVal } from './config/constants.js';
 import { OverridesPanel } from './config/OverridesPanel.js';
@@ -12,11 +11,16 @@ import { HistoryPanel } from './config/panels/HistoryPanel.js';
 import { AddProfilePanel } from './config/panels/AddProfilePanel.js';
 import { DeleteProfilePanel } from './config/panels/DeleteProfilePanel.js';
 import { PreviewPanel } from './config/panels/PreviewPanel.js';
+import { ImportProfilePanel } from './config/panels/ImportProfilePanel.js';
 import { TestUI } from './config/panels/TestUI.js';
+import { ProfileNavList } from './config/ProfileNavList.js';
+import { ShortcutBar } from './config/ShortcutBar.js';
+import { useConfigInput } from './config/useConfigInput.js';
+import type { ActionContext } from './config/useConfigActions.js';
+import { handleImport, handleDelete, handleAddProfile, handleEditField, handleHistoryRestore } from './config/useConfigActions.js';
 import { restoreBackup } from '../injector.js';
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { HeaderLogo } from './HeaderLogo.js';
+import { HelpUI } from './config/panels/HelpUI.js';
 
 interface Props {
   store: AppStore;
@@ -27,6 +31,8 @@ interface Props {
 }
 
 export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }: Props) {
+  // ─── 状态声明 ──────────────────────────────────
+
   const [lang, setLang] = useState<'zh' | 'en'>('zh');
   const initialIdx = useMemo(() => {
     if (!initialEditId) return 0;
@@ -37,22 +43,22 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
   const [selectedIdx, setSelectedIdx] = useState(initialIdx);
   const [focusState, setFocusState] = useState<'left' | 'right' | 'edit'>(initialEditId ? 'right' : 'left');
   const [rightIdx, setRightIdx] = useState(0);
-  
+
   const [addMode, setAddMode] = useState(initialMode === 'add');
   const [deleteMode, setDeleteMode] = useState(false);
   const [testMode, setTestMode] = useState(initialMode === 'test' || initialMode === 'batch');
-  const [historyMode, setHistoryMode] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState<'global' | 'profile' | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
+  const [importMode, setImportMode] = useState(false);
+  const [helpMode, setHelpMode] = useState(false);
 
-  // testResults / testDurations 使用 useEffect 同步持久化（不在 setState 回调里做 side effect）
   const initialTR = Object.fromEntries(
     Object.entries(store.testResults || {}).filter(([_, v]) => v === 'ok' || v === 'fail')
   ) as Record<string, 'ok' | 'fail' | 'running'>;
   const [testResults, setTestResults] = useState(initialTR);
   const [testDurations, setTestDurations] = useState<Record<string, number>>(store.testDurations || {});
+  const [markedIds, setMarkedIds] = useState<Set<string>>(new Set());
 
-  // 使用 useEffect 将 testResults 和 testDurations 同步持久化到 store
-  // mounted ref 跳过首次渲染，避免 mount 时无谓写盘
   const mounted = useRef(false);
   useEffect(() => {
     if (!mounted.current) { mounted.current = true; return; }
@@ -76,153 +82,75 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
     toastTimeoutRef.current = setTimeout(() => setToastMsg(null), duration);
   };
 
+  // ─── 派生值 ───────────────────────────────────
+
   const globalConfig = useMemo(() => readCurrentConfig(), [globalTick]);
   const profiles = store.profiles;
   const selected = profiles[selectedIdx] || null;
 
-  // 移动 profile 顺序
-  const moveProfile = (dir: -1 | 1) => {
-    const newIdx = selectedIdx + dir;
-    if (newIdx < 0 || newIdx >= profiles.length) return;
-    const newProfiles = [...profiles];
-    [newProfiles[selectedIdx], newProfiles[newIdx]] = [newProfiles[newIdx], newProfiles[selectedIdx]];
-    onUpdate({ ...store, profiles: newProfiles });
-    setSelectedIdx(newIdx);
+  // ─── Action 上下文 ────────────────────────────
+
+  const actionCtx: ActionContext = {
+    store, profiles, globalConfig, onUpdate, showToast, setGlobalTick,
   };
 
-  useInput((input: string, key: any) => {
-    if (historyMode || testMode || addMode || deleteMode || focusState === 'edit' || previewMode) return;
+  // ─── 键盘输入路由 ────────────────────────────
 
-    if (focusState === 'right') {
-      if (key.escape || key.leftArrow) { setFocusState('left'); return; }
-      if (key.upArrow) { setRightIdx(v => Math.max(0, v - 1)); return; }
-      if (key.downArrow) { setRightIdx(v => Math.min(OVERRIDE_FIELDS.length - 1, v + 1)); return; }
-      if (key.tab || (key as any).shiftTab) {
-        const isShiftTab = key.shift || (key as any).shiftTab;
-        const currGroup = OVERRIDE_FIELDS[rightIdx].group;
-        if (isShiftTab) {
-          const currGroupFirstIdx = OVERRIDE_FIELDS.findIndex(f => f.group === currGroup);
-          if (currGroupFirstIdx <= 0) {
-            const lastGroup = OVERRIDE_FIELDS[OVERRIDE_FIELDS.length - 1].group;
-            setRightIdx(OVERRIDE_FIELDS.findIndex(f => f.group === lastGroup));
-          } else {
-            const prevGroup = OVERRIDE_FIELDS[currGroupFirstIdx - 1].group;
-            setRightIdx(OVERRIDE_FIELDS.findIndex(f => f.group === prevGroup));
-          }
-        } else {
-          let nextIdx = OVERRIDE_FIELDS.findIndex((f, idx) => idx > rightIdx && f.group !== currGroup);
-          if (nextIdx === -1) nextIdx = 0;
-          setRightIdx(nextIdx);
-        }
-        return;
-      }
-      if (input === 'g') {
-        const field = OVERRIDE_FIELDS[rightIdx];
-        if (field.group === 'cfg_profile' || !selected) return;
-        const val = (selected as any)[field.key] || '';
-        const globalVal = getGlobalVal(globalConfig, field) || '';
-        
-        if (!val) {
-          showToast(`[${field.label}] 暂无专属配置值，无法同步至全局`, 'error');
-          return;
-        }
-        if (val === globalVal) {
-          showToast(`[${field.label}] 专属值与当前全局值无差异，无需写入`, 'error');
-          return;
-        }
+  useConfigInput(
+    { focusState, selectedIdx, rightIdx, addMode, deleteMode, testMode, previewMode, importMode, historyFilter, markedIds, lang, helpMode },
+    { setFocusState, setSelectedIdx, setRightIdx, setAddMode, setDeleteMode, setTestMode, setPreviewMode, setImportMode, setHistoryFilter, setMarkedIds, setLang, setHelpMode },
+    store, profiles, selected, actionCtx, onExit,
+  );
 
-        pushHistory(store, `Save [${field.label}] to Global`);
-        saveGlobalConfigField(field.key, val);
-        setGlobalTick(t => t + 1);
-        showToast(`已成功同步 [${field.label}] 持久化写入全局配置`, 'success');
-        onUpdate({ ...store });
-        return;
-      }
-      if (input === 'p') { setPreviewMode(true); return; }
-      if (input === 'l') { setLang(v => v === 'zh' ? 'en' : 'zh'); return; }
-      if (key.return || key.rightArrow) { setFocusState('edit'); return; }
-      return;
-    }
-
-    // focusState === 'left'
-    if (key.escape) { onExit(); return; }
-    if (input === 'l') { setLang(v => v === 'zh' ? 'en' : 'zh'); return; }
-    if (input === 'a') { setAddMode(true); return; }
-    if (input === 'd' && selected) { setDeleteMode(true); return; }
-    if (input === 'c' && selected) {
-      // Clone profile
-      const cloned = cloneProfile(selected);
-      const newProfiles = [...profiles, cloned];
-      onUpdate({ ...store, profiles: newProfiles });
-      setSelectedIdx(newProfiles.length - 1);
-      showToast(`已克隆 "${selected.name}" -> "${cloned.name}"`, 'success');
-      return;
-    }
-    if (input === 'x') {
-      // Export profiles
-      const json = exportProfiles(profiles);
-      const exportPath = join(homedir(), '.codex-start', 'profiles-export.json');
-      writeFileSync(exportPath, json + '\n');
-      showToast(`已导出 ${profiles.length} 个 profiles -> ${exportPath}`, 'success', 4000);
-      return;
-    }
-    if (input === 'h') {
-      if (!store.history || store.history.length === 0) {
-        pushHistory(store, 'Initial Backup');
-        onUpdate({ ...store });
-      }
-      setHistoryMode(true);
-      return;
-    }
-    if (input === ' ' && selected) {
-      onUpdate({ ...store, profiles: profiles.map((p) => ({ ...p, isDefault: p.id === selected.id })) });
-      return;
-    }
-    if (input === 't') { setTestMode(true); return; }
-    // Shift+方向键移动 profile 顺序 (用 J/K)
-    if (input === 'J' && selected) { moveProfile(1); return; }
-    if (input === 'K' && selected) { moveProfile(-1); return; }
-    if (input === 'W') {
-      const currentTheme = store.globalTheme || 'mocha';
-      const idx = themeOptions.indexOf(currentTheme);
-      const nextTheme = themeOptions[(idx + 1) % themeOptions.length];
-      const updated = { ...store, globalTheme: nextTheme };
-      applyTheme(nextTheme);
-      onUpdate(updated);
-      showToast(`Theme: ${nextTheme}`, 'success');
-      return;
-    }
-    if ((key.return || key.rightArrow) && selected) { setFocusState('right'); return; }
-  });
+  // ─── 右面板渲染 ──────────────────────────────
 
   const renderRightPanel = () => {
-    if (historyMode) {
+    if (historyFilter) {
       return (
         <HistoryPanel
           store={store}
+          isActive={focusState === 'right'}
+          filterMode={historyFilter}
+          profileId={selected?.id}
           onRestore={(idx) => {
-            const item = (store.history || [])[idx];
-            if (item) {
-              pushHistory(store, `Revert to history ${item.message.slice(0, 20)}`);
-              restoreBackup({ authJson: item.authJson, configToml: item.configToml });
-              setGlobalTick(t => t + 1);
-              setHistoryMode(false);
-              onUpdate({ ...store });
-            }
+            const restoredProfiles = handleHistoryRestore(store, idx, actionCtx);
+            setHistoryFilter(null);
+            setFocusState('left');
           }}
-          onCancel={() => setHistoryMode(false)}
+          onDelete={(idx) => {
+            const newHistory = [...(store.history || [])];
+            if (idx === 'all') {
+              newHistory.length = 0;
+            } else {
+              newHistory.splice(idx as number, 1);
+            }
+            onUpdate({ ...store, history: newHistory });
+          }}
+          onCancel={() => { setHistoryFilter(null); setFocusState('left'); }}
+          onFocusLeft={() => setFocusState('left')}
+          onToggleFilterMode={() => setHistoryFilter(prev => prev === 'global' ? 'profile' : 'global')}
         />
       );
     }
 
     if (previewMode && selected) {
       return (
-        <PreviewPanel profile={selected} globalConfig={globalConfig} onClose={() => setPreviewMode(false)} />
+        <PreviewPanel
+          profile={selected}
+          globalConfig={globalConfig}
+          onClose={() => setPreviewMode(false)}
+          onNextProfile={(dir) => {
+            let newIdx = selectedIdx + dir;
+            if (newIdx >= profiles.length) newIdx = 0;
+            else if (newIdx < 0) newIdx = profiles.length - 1;
+            setSelectedIdx(newIdx);
+          }}
+        />
       );
     }
 
     if (focusState === 'edit' && selected) {
-      const field = OVERRIDE_FIELDS[rightIdx];
+      const field = OVERRIDE_FIELDS[rightIdx]!;
       const currentVal = (selected as any)[field.key] || '';
       const globalVal = getGlobalVal(globalConfig, field);
       return (
@@ -232,8 +160,7 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
             field={field} currentValue={currentVal} globalValue={globalVal} lang={lang}
             profile={selected}
             onSave={(val) => {
-              const updated = profiles.map((p) => p.id === selected.id ? { ...p, [field.key]: val } : p);
-              onUpdate({ ...store, profiles: updated });
+              handleEditField(selected, rightIdx, val, actionCtx);
               setFocusState('right');
             }}
             onCancel={() => setFocusState('right')}
@@ -246,32 +173,40 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
       return (
         <AddProfilePanel
           onAdd={(addUrl, addKey, addName) => {
-               const p = createProfile({
-                 name: addName, base_url: addUrl, api_key: addKey,
-                 model: '', model_reasoning_effort: '', wire_api: '',
-                 personality: '', model_reasoning_summary: '', service_tier: '',
-                 disable_response_storage: '', approval_policy: '', sandbox_mode: '',
-                 web_search: '', requires_openai_auth: true, isDefault: profiles.length === 0,
-               } as any);
-               onUpdate({ ...store, profiles: [...profiles, p] });
-               setSelectedIdx(profiles.length);
-               setAddMode(false);
+            const result = handleAddProfile(addUrl, addKey, addName, actionCtx);
+            setSelectedIdx(result.newIdx);
+            setAddMode(false);
           }}
           onCancel={() => setAddMode(false)}
         />
       );
     }
 
-    if (deleteMode && selected) {
+    if (importMode) {
+      return (
+        <ImportProfilePanel
+          onImport={(path) => {
+            const result = handleImport(path, actionCtx);
+            if (result.success && result.newIdx !== undefined) {
+              setSelectedIdx(result.newIdx);
+            }
+            setImportMode(false);
+          }}
+          onCancel={() => setImportMode(false)}
+        />
+      );
+    }
+
+    if (deleteMode && (markedIds.size > 0 || selected)) {
+      const toDeleteProfiles = markedIds.size > 0 ? profiles.filter(p => markedIds.has(p.id)) : [selected!];
       return (
         <DeleteProfilePanel
-          profile={selected}
+          profiles={toDeleteProfiles}
           onConfirm={() => {
-             const remaining = profiles.filter((_, i) => i !== selectedIdx);
-             if (selected.isDefault && remaining.length > 0) remaining[0].isDefault = true;
-             onUpdate({ ...store, profiles: remaining });
-             setSelectedIdx(Math.max(0, Math.min(selectedIdx, remaining.length - 1)));
-             setDeleteMode(false);
+            const result = handleDelete(toDeleteProfiles, selectedIdx, actionCtx);
+            setSelectedIdx(result.newIdx);
+            setMarkedIds(new Set());
+            setDeleteMode(false);
           }}
           onCancel={() => setDeleteMode(false)}
         />
@@ -279,11 +214,12 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
     }
 
     return selected ? (
-      <OverridesPanel profile={selected} activeFieldIdx={rightIdx} focusState={focusState} globalConfig={globalConfig} lang={lang} navWidth={computeNavWidth(profiles.map(p => p.name), 9)} />
+      <OverridesPanel profile={selected} activeFieldIdx={rightIdx} focusState={focusState} globalConfig={globalConfig} lang={lang} navWidth={computeNavWidth(profiles.map(p => p.name), 12, 14)} />
     ) : null;
   };
 
-  // TestUI takes over the entire screen
+  // ─── TestUI 全屏接管 ─────────────────────────
+
   if (testMode && profiles.length > 0) {
     return (
       <TestUI
@@ -297,10 +233,15 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
     );
   }
 
-  if (profiles.length === 0 && !addMode && !historyMode) {
+  // ─── 空 profiles 提示 ────────────────────────
+
+  if (profiles.length === 0 && !addMode && !historyFilter && !importMode) {
     return (
       <Box flexDirection="column" padding={1}>
-        <Text color={colors.accent} bold>{symbols.dot} Codex Start</Text>
+        <HeaderLogo themeName={store.globalTheme || 'mocha'} />
+        <Box marginBottom={1} marginTop={1}>
+          <Text color={colors.accent} bold>{symbols.dot} Codex-Start</Text>
+        </Box>
         <Box marginTop={1}>
           <Text color={colors.dim}>[l] Toggle Lang  </Text><Text color={colors.muted}>No profiles. Press </Text>
           <Text color={colors.primary} bold>a</Text>
@@ -310,83 +251,38 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
     );
   }
 
-  const listItems = profiles.map((p) => ({ label: p.id, value: p.id }));
+  // ─── 主布局 ──────────────────────────────────
+
+  if (helpMode) {
+    const computedUiMode = historyFilter ? 'history' : (focusState === 'left' ? 'config-left' : 'config-right');
+    return <HelpUI onClose={() => setHelpMode(false)} themeName={store.globalTheme || 'mocha'} uiMode={computedUiMode} />;
+  }
+
+  const navIsActive = focusState === 'left' && profiles.length > 0 && !addMode && !deleteMode && !testMode && !previewMode && !importMode && !helpMode;
 
   return (
     <Box flexDirection="column" padding={1}>
-      <Box marginBottom={1}>
-        <Text color={colors.accent} bold>{symbols.dot} Codex Start</Text>
+      <HeaderLogo themeName={store.globalTheme || 'mocha'} />
+      <Box marginBottom={1} marginTop={1}>
+        <Text color={colors.accent} bold>{symbols.dot} Codex-Start</Text>
       </Box>
 
       <Box borderStyle="round" borderColor={colors.dim} flexDirection="row" width="100%">
-        <Box flexDirection="column" width={computeNavWidth(profiles.map(p => p.name), 9)} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} borderColor={colors.dim} padding={1} paddingRight={2}>
+        <Box flexDirection="column" width={computeNavWidth(profiles.map(p => p.name), 12, 14)} borderStyle="single" borderTop={false} borderBottom={false} borderLeft={false} borderColor={colors.dim} padding={1} paddingRight={2}>
           <Text color={colors.muted} bold> Profiles</Text>
           <Box marginTop={1} flexDirection="column">
-            {focusState === 'left' && profiles.length > 0 && !addMode && !deleteMode && !historyMode && !testMode && !previewMode ? (
-              <SelectInput
-                items={listItems}
-                onSelect={() => { setFocusState('right'); setRightIdx(0); }}
-                onHighlight={(item: any) => {
-                  const idx = profiles.findIndex((p) => p.id === item.value);
-                  if (idx >= 0) { queueMicrotask(() => setSelectedIdx(idx)); }
-                }}
-                indicatorComponent={({ isSelected }: any) => (
-                  <Text color={isSelected ? colors.primary : colors.dim}>{isSelected ? `${symbols.arrow} ` : '  '}</Text>
-                )}
-                itemComponent={({ isSelected, label }: any) => {
-                  const p = profiles.find((pr) => pr.id === label);
-                  if (!p) return <Text>{label}</Text>;
-                  const res = testResults[p.id];
-                  return (
-                    <Box>
-                      <Text>
-                        <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '   '}</Text>
-                        <Text>
-                          {res === 'ok' ? <Text color={colors.success}>{`${symbols.check} `}</Text> :
-                           res === 'fail' ? <Text color={colors.danger}>{`${symbols.cross} `}</Text> :
-                           res === 'running' ? <Text color={colors.warning}>{`${symbols.circle} `}</Text> :
-                           <Text>{'  '}</Text>}
-                        </Text>
-                        <Text color={isSelected ? colors.text : colors.muted}>{p.name}</Text>
-                      </Text>
-                    </Box>
-                  );
-                }}
-              />
-            ) : focusState === 'left' && profiles.length === 0 ? (
-              <Box flexDirection="column"><Text color={colors.dim}>[No profiles]</Text></Box>
-            ) : (
-              <Box flexDirection="column">
-                {profiles.map((p, i) => {
-                  const isSelected = i === selectedIdx && !addMode && !deleteMode;
-                  const res = testResults[p.id];
-                  return (
-                    <Box key={p.id}>
-                      <Text>
-                        <Text color={isSelected ? colors.primary : colors.dim}>{isSelected ? `${symbols.arrow} ` : '  '}</Text>
-                        <Text color={p.isDefault ? colors.warning : colors.dim}>{p.isDefault ? `${symbols.star} ` : '   '}</Text>
-                        <Text>
-                          {res === 'ok' ? <Text color={colors.success}>{`${symbols.check} `}</Text> :
-                           res === 'fail' ? <Text color={colors.danger}>{`${symbols.cross} `}</Text> :
-                           res === 'running' ? <Text color={colors.warning}>{`${symbols.circle} `}</Text> :
-                           <Text>{'  '}</Text>}
-                        </Text>
-                        <Text color={colors.muted}>{p.name}</Text>
-                      </Text>
-                    </Box>
-                  )
-                })}
-                {addMode && (
-                  <Box marginTop={1}>
-                    <Text>
-                      <Text color={colors.primary}>{`${symbols.arrow} `}</Text>
-                      <Text color={colors.dim}>{'  '}</Text>
-                      <Text color={colors.primary} italic>*(New)*</Text>
-                    </Text>
-                  </Box>
-                )}
-              </Box>
-            )}
+            <ProfileNavList
+              profiles={profiles}
+              selectedIdx={selectedIdx}
+              isActive={navIsActive}
+              testResults={testResults}
+              testDurations={testDurations}
+              markedIds={markedIds}
+              addMode={addMode}
+              deleteMode={deleteMode}
+              onSelect={() => { setFocusState('right'); setRightIdx(0); }}
+              onHighlight={(idx) => setSelectedIdx(idx)}
+            />
           </Box>
         </Box>
 
@@ -405,38 +301,12 @@ export function ConfigUI({ store, initialMode, initialEditId, onUpdate, onExit }
         )}
       </Box>
 
-      {(() => {
-        const isSubMode = addMode || deleteMode || historyMode || testMode || previewMode;
-        if (isSubMode) return null;
-
-        return focusState === 'left' ? (
-          <Box gap={2} flexWrap="wrap">
-            <Text color={colors.dim}>{'[Enter/\u2192] Edit'}</Text>
-            <Text color={colors.dim}>[a] Add</Text>
-            <Text color={colors.dim}>[c] Clone</Text>
-            <Text color={colors.dim}>[d] Delete</Text>
-            <Text color={colors.dim}>[t] Test</Text>
-            <Text color={colors.dim}>[x] Export</Text>
-            <Text color={colors.dim}>[h] History</Text>
-            <Text color={colors.dim}>[J/K] Reorder</Text>
-            <Text color={colors.dim}>[Space] Default</Text>
-            <Text color={colors.dim}>[W] Theme</Text>
-            <Text color={colors.dim}>[l] Lang</Text>
-            <Text color={colors.dim}>[Esc] Exit</Text>
-          </Box>
-        ) : (
-          <Box gap={2} flexWrap="wrap">
-            <Text color={colors.dim}>{'[Enter/\u2192] Edit'}</Text>
-            <Text color={colors.dim}>[g] Save to Global</Text>
-            <Text color={colors.dim}>[p] Preview</Text>
-            <Text color={colors.dim}>[Up/Down] Navigate</Text>
-            <Text color={colors.dim}>[Tab] Jump Category</Text>
-            <Text color={colors.dim}>[l] Language</Text>
-            <Text color={colors.dim}>{'[Esc/\u2190] Back'}</Text>
-          </Box>
-        );
-      })()}
+      <ShortcutBar
+        focusState={focusState}
+        historyFilter={historyFilter}
+        markedIds={markedIds}
+        isSubMode={addMode || deleteMode || testMode || previewMode || importMode}
+      />
     </Box>
   );
-
 }

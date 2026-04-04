@@ -2,8 +2,9 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { colors, symbols } from '../../theme.js';
 import type { Profile } from '../../types.js';
-import { OVERRIDE_FIELDS, TABS, getGlobalVal } from './constants.js';
 import { computeDisplayWidth } from '../../utils.js';
+import { OVERRIDE_FIELDS, TABS, getGlobalVal } from './constants.js';
+import { RainbowText } from '../RainbowText.js';
 
 
 export function OverridesPanel({
@@ -66,7 +67,9 @@ export function OverridesPanel({
       {/* 履带视口的面包屑 */}
       <Box marginBottom={1} gap={1} justifyContent="space-between">
         <Box gap={1}>
-          <Text color={colors.dim}>[{profile.name}]</Text>
+          <Text color={colors.dim}>[</Text>
+          <RainbowText text={profile.name} />
+          <Text color={colors.dim}>]</Text>
           <Text color={colors.dim}>{'»'}</Text>
           <Text color={colors.accent} bold>{currentTab.title}</Text>
           <Text color={colors.dim}> ({currentIdx + 1}/{OVERRIDE_FIELDS.length})</Text>
