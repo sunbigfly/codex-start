@@ -5,107 +5,89 @@
 
 <p align="center">
   <a href="#quickstart">Quickstart</a> &middot;
+  <a href="#features">Features</a> &middot;
   <a href="#cli-reference">CLI Reference</a> &middot;
   <a href="#keyboard-shortcuts">Shortcuts</a> &middot;
-  <a href="#architecture">Architecture</a>
+  <a href="#architecture">Architecture</a> &middot;
+  <a href="#friends">Friends</a>
 </p>
 
 ---
 
-**Codex Start** (`cs`) 是一个终端原生的多 Profile 管理器，为 [OpenAI Codex CLI](https://github.com/openai/codex) 提供开箱即用的配置切换、连接测试和参数覆盖能力。
+**Codex Start** (`cs`) 是一个终端原生的配置（Profile）管家，专为 [OpenAI Codex CLI](https://github.com/openai/codex) 打造。
 
-使用 [Ink](https://github.com/vadimdemedes/ink) (React for CLI) 构建，运行在任何支持 Node.js 的终端上。
+Codex 默认依赖 `config.toml` 配置。当你在多个 API 提供商、不同模型、不同参数之间频繁切换时，每次手动修改配置文件既繁琐又易错。`cs` 帮您把每一套配置环境封装为**独立的 Profile**。启动时自动将参数注入到全局环境，退出后无缝还原，全程**0污染**！
 
-### 解决什么问题
-
-Codex CLI 依赖 `~/.codex/config.toml` + `auth.json` 做全局配置。当你需要在多个 API provider / model / 参数组合间频繁切换时，手动编辑文件既繁琐又容易出错。
-
-`cs` 把每套配置封装为 **Profile**，启动时自动注入对应的 `config.toml` + `auth.json`，用完自动还原。
+基于 [Ink](https://github.com/vadimdemedes/ink) (React for CLI) 构建，运行在绝大部分支持 Node.js 的终端。
 
 ---
 
-## Features
+## ✨ Features / 核心功能
 
-| 能力 | 说明 |
-|------|------|
-| **多 Profile 管理** | 增 / 删 / 改 / 克隆 / 排序 / 设默认，每个 Profile 独立保存 URL + Key + 全部参数覆盖 |
-| **一键启动** | `cs` 启动默认 Profile；`cs 2` 按序号；`cs run deepseek` 按名称模糊匹配 |
-| **连接测试** | 单个 / 批量测试，含耗时统计、15s 超时保护、结果持久化 |
-| **参数覆盖** | 40+ 配置项分 11 个分类，支持 Profile 局部覆盖与全局同步 |
-| **模型自动发现** | 编辑 model 字段时可直接调用 `GET /v1/models` 拉取 provider 实际支持的模型列表 |
-| **配置预览** | 注入前预览完整 `config.toml` 快照，高亮被 Profile 覆盖的字段 |
-| **导入 / 导出** | JSON 格式，导出时 API Key 自动掩码，方便团队共享 |
-| **模糊搜索** | `cs list` 中按 `/` 实时过滤 Profile 列表 |
-| **全键盘主题切换** | 任意界面随时按大写 `W` 热切换极客主题（Mocha, Nord, Dracula等） |
-| **历史快照** | 每次写入全局配置自动快照，支持一键回滚到任意历史版本 |
-| **中 / 英双语** | `l` 键即时切换界面语言 |
-| **自动补全** | `cs run <Tab>` 支持原生 Shell 名称智能联想补全 |
+- 🗂️ **多 Profile 大管家**: 增、删、改、克隆、自定义拖拽排序、设为默认。每个 Profile 独立保留其专属 URL、Key 及 40+ 参数覆盖！
+- 🚀 **一键极速点火**: `cs` 直接唤醒默认环境；`cs <序号>` 或 `cs run <名称>` 按名称模糊匹配快速启动。
+- ⚡ **连接性压力测试**: 支持单点与**一键批量测速**。自带延迟统计、15s 超时断路保护以及结果缓存。告别盲人摸象。
+- 🎛️ **所见即所得的参数配置**: 内置沉浸式管理 TUI。支持动态预览注入后的 `.toml`；11 大分类参数分层管理。
+- 🔍 **云端模型动态感知**: 编辑模型名时，一键拉取服务商真实的 `GET /v1/models` 模型列表。
+- 📦 **自动快照与穿梭**: 每当更新全局配置系统都会帮你自动建立快照，支持一键回溯旧时光！
+- 🔄 **离线分享与 JSON 流转**: 自带 API Key 脱敏机制的安全 Export/Import，轻松跟团队共享整套设定。
+- 🎨 **原生终端的极致体验**: 
+  - TUI 界面任意位置按大写 `W` 热切换极客主题（Mocha, Nord, Dracula等）。
+  - 支持中英文无缝切换（按 `l` 键）。
+  - 接入原生 Shell 深度智能补全 (`cs run <Tab>`)。
 
 ---
 
-## Quickstart
+## 🚀 Quickstart
 
-### 手免安装运行（推荐🌟）
+**零感体验（推荐🌟）**
 
-只需装有 Node.js 即可直接无痕运行，完全无需全局安装：
+仅需 Node.js 即可直接无痕运行：
 
 ```bash
 npx codex-start
 ```
 
-### 传统全局安装
+**传统全局安装**
 
 ```bash
 # 全局安装 (NPM)
 npm install -g codex-start
 
-# 从 GitHub 安装最新版
-npm install -g sunbigfly/codex-start
-
-# 或从源码
+# 或从源码搭建
 git clone https://github.com/sunbigfly/codex-start.git
 cd codex-start && npm install && npm link
 ```
 
-### 30 秒上手
+**30 秒快速上手**
 
 ```bash
-# 1. 添加第一个 Profile
-cs add
-
-# 2. 查看所有 Profile
-cs list
-
-# 3. 测试连通性
-cs test
-
-# 4. 直接启动默认 Profile
-cs
-
-# 5. 进入配置管理面板
-cs config
+cs add        # 1. 建立首个专属 Profile
+cs test       # 2. 测一下连通性 
+cs config     # 3. 开启 TUI 配置参数面板进行微调
+cs            # 4. 直接起飞体验！
 ```
 
 ---
 
-## CLI Reference
+## 💻 CLI Reference
 
 ```
 cs                       启动默认 Profile
 cs <N>                   按序号启动（如 cs 2）
 cs run <name>            按名称模糊匹配启动
-cs list | ls             交互式 Profile 列表
-cs config | c            配置管理 TUI
+cs list | ls             交互式 Profile 列表 TUI
+cs config | c            配置管理面板 TUI
 cs add                   添加新 Profile
-cs test                  连接性测试
-cs export [path]         导出 Profiles（API Key 掩码）
+cs test                  连接性测试面板
+cs export [path]         安全导出 Profiles（API Key 脱敏）
 cs import <path>         从 JSON 文件导入 Profiles
 cs --setup-completion    在系统 (.zshrc/.bashrc) 中一键安装智能补全
 ```
 
 ---
 
-## Keyboard Shortcuts
+## ⌨️ Keyboard Shortcuts
 
 ### `cs list` -- Profile 列表
 
@@ -150,65 +132,52 @@ Esc / <-     返回左栏
 
 ```
 b            切换 Single / Batch 模式
-Enter        开始测试
+Enter        开始全部/选定测试
 Space        勾选 / 取消 Profile（Batch 模式）
 a            全选 / 全不选
 u / i        Unified Model / Per-profile 策略
 Tab / ->     切换到模型选择区
-Esc          返回
 ```
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 ```
 codex-start/
-  bin/cs.js              入口：tsx 透传启动 app.tsx
+  bin/cs.js              CLI 原生入口
   src/
-    app.tsx              CLI 路由 + cs list TUI
-    utils.ts             maskApiKey / fuzzyMatch 工具
-    store.ts             JSON 持久化 (~/.codex-start/data.json)
-    injector.ts          config.toml + auth.json 注入 / 还原
-    theme.ts             Catppuccin Mocha 色板 + 符号表
-    types.ts             Profile / AppStore 类型定义
+    app.tsx              完整路由 + ListUI 主页
+    store.ts             JSON 本地存储 (~/.codex-start/data.json)
+    injector.ts          配置挂载 / 安全还原代理
+    theme.ts             Catppuccin 等主题色板及符号系统支持包
+    types.ts             Profile 的核心数据结构规范
     components/
-      ConfigUI.tsx       cs config 主控组件
+      ConfigUI.tsx       系统主控控制台
       config/
-        constants.ts     40+ 字段定义 + 模型列表 + 分类
-        OverridesPanel.tsx  参数覆盖表格（滚动视口）
-        FieldEditor.tsx  字段编辑器（text/select/combo/bool + Fetch Models）
-        panels/
-          AddProfilePanel.tsx   添加 Profile 向导
-          DeleteProfilePanel.tsx 删除确认
-          HistoryPanel.tsx       历史快照列表
-          TestUI.tsx             单测 / 批量测试面板
-```
-
-### 数据流
-
-```
-Profile 选择 --> injectProfile() --> 写 ~/.codex/config.toml + auth.json
-                                      |
-                                      v
-                               spawn('codex', args)
-                                      |
-                                      v
-                               退出后 restoreBackup() --> 还原为原始配置
+        constants.ts     40+ 关键配置、分类结构与渲染规则数据字典
+        OverridesPanel.tsx 参数表格容器
+        FieldEditor.tsx  类型化数据编辑器（包含动效拉取组件）
 ```
 
 ---
 
-## 配置存储
+## 🗃️ 配置存储
 
 | 路径 | 用途 |
 |------|------|
-| `~/.codex-start/data.json` | Profiles / 备份快照 / 测试结果 / 历史记录 |
-| `~/.codex/config.toml` | Codex CLI 运行时配置（启动时注入，退出后还原） |
-| `~/.codex/auth.json` | API Key 注入点 |
+| `~/.codex-start/data.json` | Profiles 数据存储、备份、测速等全局数据。 |
+| `~/.codex/config.toml`     | Codex CLI 目标配置文件（`cs` 将在此热插拔配置）。 |
+| `~/.codex/auth.json`       | 高清 API Key 隔离存储机制注入点。 |
 
 ---
 
-## License
+## 🤝 Friends
+
+- [LINUX DO - 新的理想型社区](https://linux.do)
+
+---
+
+## 📄 License
 
 MIT
