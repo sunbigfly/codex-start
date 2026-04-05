@@ -249,6 +249,41 @@ function ListAppWrapper({ onAction }: { onAction: (a: ListAction) => void }) {
 }
 
 async function main() {
+  // --- WSL Synchronized Output Patch ---
+  // Ink 每次 setState 会多次调用 stdout.write（先清除旧行，再写入新内容），
+  // WSL + Windows Terminal 下两步之间的延迟造成可见闪烁。
+  // 通过 queueMicrotask 将同一渲染周期内的所有 write 合并为一次原子写入，
+  // 并用 Synchronized Output 协议（DEC Private Mode 2026）包裹，
+  // 告诉 Windows Terminal 在收到完整输出后再一次性渲染。
+  try {
+    const rel = require('node:os').release().toLowerCase();
+    if (rel.includes('microsoft') || rel.includes('wsl')) {
+      const origWrite = process.stdout.write.bind(process.stdout);
+      let buf = '';
+      let scheduled = false;
+      (process.stdout as any).write = (
+        chunk: string | Buffer,
+        encOrCb?: BufferEncoding | ((err?: Error) => void),
+        cb?: (err?: Error) => void,
+      ): boolean => {
+        buf += typeof chunk === 'string' ? chunk : chunk.toString();
+        const callback = typeof encOrCb === 'function' ? encOrCb : cb;
+        if (!scheduled) {
+          scheduled = true;
+          queueMicrotask(() => {
+            // \x1b[?2026h = Begin Synchronized Output, \x1b[?2026l = End
+            const data = '\x1b[?2026h' + buf + '\x1b[?2026l';
+            buf = '';
+            scheduled = false;
+            origWrite(data);
+          });
+        }
+        if (callback) queueMicrotask(() => callback());
+        return true;
+      };
+    }
+  } catch { /* 检测失败不影响正常运行 */ }
+
   const initialStore = ensureBackup(loadStore());
   if (initialStore.globalTheme) applyTheme(initialStore.globalTheme);
 
@@ -263,7 +298,8 @@ async function main() {
       console.clear();
       
       const { waitUntilExit } = render(
-        <ListAppWrapper onAction={(a) => { resolvedAction = a; }} />
+        <ListAppWrapper onAction={(a) => { resolvedAction = a; }} />,
+        { patchConsole: false }
       );
       
       await waitUntilExit();
@@ -278,22 +314,22 @@ async function main() {
         return;
       } else if (act.type === 'edit') {
         console.clear();
-        const { waitUntilExit: wExit } = render(<ConfigApp cmd="config" editId={act.profileId} />);
+        const { waitUntilExit: wExit } = render(<ConfigApp cmd="config" editId={act.profileId} />, { patchConsole: false });
         await wExit();
       } else if (act.type === 'add') {
         console.clear();
-        const { waitUntilExit: wExit } = render(<ConfigApp cmd="add" />);
+        const { waitUntilExit: wExit } = render(<ConfigApp cmd="add" />, { patchConsole: false });
         await wExit();
       } else if (act.type === 'test') {
         console.clear();
-        const { waitUntilExit: wExit } = render(<ConfigApp cmd="test" />);
+        const { waitUntilExit: wExit } = render(<ConfigApp cmd="test" />, { patchConsole: false });
         await wExit();
       }
     }
   }
 
   console.clear();
-  const { waitUntilExit } = render(<ConfigApp cmd={cmd} />);
+  const { waitUntilExit } = render(<ConfigApp cmd={cmd} />, { patchConsole: false });
   await waitUntilExit();
 }
 

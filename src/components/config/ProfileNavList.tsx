@@ -75,7 +75,7 @@ export function ProfileNavList({
         onSelect={onSelect}
         onHighlight={(item: any) => {
           const idx = profiles.findIndex(p => p.id === item.value);
-          if (idx >= 0) { queueMicrotask(() => onHighlight(idx)); }
+          if (idx >= 0) onHighlight(idx);
         }}
         indicatorComponent={({ isSelected }: any) => (
           <Text color={isSelected ? colors.primary : colors.dim}>{isSelected ? `${symbols.arrow} ` : '  '}</Text>

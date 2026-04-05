@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Text } from 'ink';
 
 // 史诗金 (Epic Gold) 色彩库：包含明暗交替的黄金、暗金、亮白高光等，实现史诗级流光溢彩
@@ -27,33 +27,47 @@ interface Props {
 }
 
 export function RainbowText({ text, bold, italic }: Props) {
-  const [colors, setColors] = useState<string[]>(() => 
+  // 快速切换 profile 时组件存活 < 150ms，保持纯色避免创建 N 个 Text 节点
+  const [activated, setActivated] = useState(false);
+
+  const [animColors, setAnimColors] = useState<string[]>(() =>
     Array.from({ length: text.length }, () => getRandomColor())
   );
 
-  // 应对 text props 可能的变化
   useEffect(() => {
-    if (colors.length !== text.length) {
-      setColors(Array.from({ length: text.length }, () => getRandomColor()));
+    if (animColors.length !== text.length) {
+      setAnimColors(Array.from({ length: text.length }, () => getRandomColor()));
     }
   }, [text]);
 
+  // 150ms 延迟激活：快速滑过时不启动逐字渲染
   useEffect(() => {
+    const timer = setTimeout(() => setActivated(true), 150);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 动画定时器：激活后才启动
+  useEffect(() => {
+    if (!activated) return;
     const timer = setInterval(() => {
-      setColors((prev) => {
+      setAnimColors((prev) => {
         if (prev.length === 0) return prev;
         // 随机颜色从左往右滚动（最左端生成新颜色，右端颜色被挤出）
         return [getRandomColor(), ...prev.slice(0, prev.length - 1)];
       });
-    }, 100); 
-    
+    }, 100);
     return () => clearInterval(timer);
-  }, []);
+  }, [activated]);
+
+  // 未激活时用纯色，一个 Text 节点
+  if (!activated) {
+    return <Text bold={bold} italic={italic} color="#FFD700">{text}</Text>;
+  }
 
   return (
     <Text bold={bold} italic={italic}>
       {text.split('').map((char, i) => (
-        <Text key={`${i}-${char}`} color={colors[i] || '#ffffff'}>
+        <Text key={`${i}-${char}`} color={animColors[i] || '#ffffff'}>
           {char}
         </Text>
       ))}
