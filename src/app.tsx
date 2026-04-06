@@ -69,16 +69,28 @@ function launchCodex(profile: Profile) {
 
   const child = spawn('codex', args, { stdio: 'inherit' });
   
-  // codex 启动后配置已加载到内存，立即还原全局配置不影响运行中的实例
-  setTimeout(() => {
+  const cleanup = () => {
     restoreBackup(store.backup);
-  }, 1500);
+  };
+
+  // 确保不管父进程收到何种退出信号，都能进行还原操作
+  ['SIGINT', 'SIGTERM', 'SIGQUIT'].forEach(signal => {
+    process.on(signal, () => {
+      cleanup();
+      process.exit(0);
+    });
+  });
 
   child.on('error', (err) => {
+    cleanup();
     console.error(`\n  \x1b[31mFailed:\x1b[0m ${err.message}`);
     process.exit(1);
   });
-  child.on('exit', (code) => process.exit(code ?? 0));
+  
+  child.on('exit', (code) => {
+    cleanup();
+    process.exit(code ?? 0);
+  });
 }
 
 // --- CLI 命令路由（非 TUI，直接 console 输出） ---
