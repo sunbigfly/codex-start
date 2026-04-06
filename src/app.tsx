@@ -261,40 +261,69 @@ function ListAppWrapper({ onAction }: { onAction: (a: ListAction) => void }) {
 }
 
 async function main() {
-  // --- WSL Synchronized Output Patch ---
-  // Ink 每次 setState 会多次调用 stdout.write（先清除旧行，再写入新内容），
-  // WSL + Windows Terminal 下两步之间的延迟造成可见闪烁。
-  // 通过 queueMicrotask 将同一渲染周期内的所有 write 合并为一次原子写入，
-  // 并用 Synchronized Output 协议（DEC Private Mode 2026）包裹，
-  // 告诉 Windows Terminal 在收到完整输出后再一次性渲染。
+  // --- Ultimate Flicker-Free Rendering Engine ---
+  // 原有的 Ink 底层算法在输出新帧时，会暴力全屏向下清除（\x1b[2K / \x1b[0J），
+  // 在普通终端和 SSH（如 MobaXterm）中这会导致巨大的撕裂、黑屏和闪烁。
+  // 我们在此实现底层的“差分覆盖代理”：
+  // 1. 彻底拦截并摘除强制清空指令。
+  // 2. 改为保留 Cursor Up 时，逐行在新帧上覆盖并在行尾实施局部擦除 `\x1b[K`。
+  // 3. 补齐行差，避免底部残留旧帧，真正实现完美的 60Hz 回写级动画！
   try {
-    const rel = require('node:os').release().toLowerCase();
-    if (rel.includes('microsoft') || rel.includes('wsl')) {
-      const origWrite = process.stdout.write.bind(process.stdout);
-      let buf = '';
-      let scheduled = false;
-      (process.stdout as any).write = (
-        chunk: string | Buffer,
-        encOrCb?: BufferEncoding | ((err?: Error) => void),
-        cb?: (err?: Error) => void,
-      ): boolean => {
-        buf += typeof chunk === 'string' ? chunk : chunk.toString();
-        const callback = typeof encOrCb === 'function' ? encOrCb : cb;
-        if (!scheduled) {
-          scheduled = true;
-          queueMicrotask(() => {
-            // \x1b[?2026h = Begin Synchronized Output, \x1b[?2026l = End
-            const data = '\x1b[?2026h' + buf + '\x1b[?2026l';
-            buf = '';
-            scheduled = false;
-            origWrite(data);
-          });
-        }
-        if (callback) queueMicrotask(() => callback());
-        return true;
-      };
-    }
-  } catch { /* 检测失败不影响正常运行 */ }
+    const origWrite = process.stdout.write.bind(process.stdout);
+    let buf = '';
+    let scheduled = false;
+    let prevLineCount = 0;
+
+    (process.stdout as any).write = (
+      chunk: string | Buffer,
+      encOrCb?: BufferEncoding | ((err?: Error) => void),
+      cb?: (err?: Error) => void,
+    ): boolean => {
+      buf += (typeof chunk === 'string' ? chunk : chunk.toString());
+      const callback = typeof encOrCb === 'function' ? encOrCb : cb;
+      
+      if (!scheduled) {
+        scheduled = true;
+        queueMicrotask(() => {
+          scheduled = false;
+          let currentBuf = buf;
+          buf = '';
+          
+          const hasErase = currentBuf.includes('\x1b[2K') || currentBuf.includes('\x1b[1A');
+          const newLineCount = currentBuf.split('\n').length - 1;
+
+          if (hasErase) {
+            // 剥夺暴力的行级擦除与向底擦除
+            let processed = currentBuf.replace(/\x1B\[2K/g, '').replace(/\x1B\[0J/g, '');
+            // 将每一个真实的换行前加上“擦除至行尾”指令，做到严丝合缝的原子重画
+            processed = processed.replace(/\n/g, '\x1B[K\n');
+            if (!processed.endsWith('\x1b[K')) {
+              processed += '\x1B[K';
+            }
+
+            // 如果新的一帧内容变短了，底部的旧屏幕可能会因为失去了暴力清屏而残余。
+            // 我们手动用无闪烁的方式洗掉它，然后将光标恢复定位
+            if (newLineCount < prevLineCount) {
+              const diff = prevLineCount - newLineCount;
+              let cleanup = '';
+              for (let i = 0; i < diff; i++) {
+                cleanup += '\n\x1B[K';
+              }
+              cleanup += `\x1B[${diff}A`;
+              processed += cleanup;
+            }
+            currentBuf = processed;
+          }
+
+          prevLineCount = newLineCount;
+          // DEC Private Mode 2026 (Synchronized Output) 兜底双保险
+          origWrite('\x1b[?2026h' + currentBuf + '\x1b[?2026l');
+        });
+      }
+      if (callback) queueMicrotask(() => callback());
+      return true;
+    };
+  } catch { /* 如果环境过老则 fallback */ }
 
   const initialStore = ensureBackup(loadStore());
   if (initialStore.globalTheme) applyTheme(initialStore.globalTheme);

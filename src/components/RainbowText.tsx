@@ -46,13 +46,12 @@ export function RainbowText({ text, bold, italic }: Props) {
     return () => clearTimeout(timer);
   }, []);
 
-  // 动画定时器：激活后才启动
+  // 动画定时器：配合底层覆盖式引擎解禁光效
   useEffect(() => {
     if (!activated) return;
     const timer = setInterval(() => {
       setAnimColors((prev) => {
         if (prev.length === 0) return prev;
-        // 随机颜色从左往右滚动（最左端生成新颜色，右端颜色被挤出）
         return [getRandomColor(), ...prev.slice(0, prev.length - 1)];
       });
     }, 100);

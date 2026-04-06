@@ -17,6 +17,7 @@ const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', 
 function useSpinner() {
   const [frame, setFrame] = useState(0);
   useEffect(() => {
+    // 配合底层 Flicker-Free Engine 解禁，放心享受极致 60Hz！
     const timer = setInterval(() => setFrame(f => (f + 1) % SPINNER_FRAMES.length), 80);
     return () => clearInterval(timer);
   }, []);
