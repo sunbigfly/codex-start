@@ -93,7 +93,7 @@ export function TestUI({ profiles, globalConfig, testResults, setTestResults, te
         if (finished) return;
         finished = true;
         if (signal) signal.removeEventListener('abort', handleAbort);
-        if (!skipRestore) restoreBackup(store.backup);
+        if (!skipRestore) restoreBackup(store.backup, profile);
         resolve(result);
       };
 

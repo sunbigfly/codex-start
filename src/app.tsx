@@ -70,7 +70,7 @@ function launchCodex(profile: Profile) {
   const child = spawn('codex', args, { stdio: 'inherit' });
   
   const cleanup = () => {
-    restoreBackup(store.backup);
+    restoreBackup(store.backup, profile);
   };
 
   // 确保不管父进程收到何种退出信号，都能进行还原操作
