@@ -269,10 +269,10 @@ async function main() {
   // 2. 改为保留 Cursor Up 时，逐行在新帧上覆盖并在行尾实施局部擦除 `\x1b[K`。
   // 3. 补齐行差，避免底部残留旧帧，真正实现完美的 60Hz 回写级动画！
   try {
-    const origWrite = process.stdout.write.bind(process.stdout);
+    let origWrite = process.stdout.write.bind(process.stdout);
     let buf = '';
     let scheduled = false;
-    let prevLineCount = 0;
+    let prevLines: string[] = [];
 
     (process.stdout as any).write = (
       chunk: string | Buffer,
@@ -289,35 +289,61 @@ async function main() {
           let currentBuf = buf;
           buf = '';
           
-          const hasErase = currentBuf.includes('\x1b[2K') || currentBuf.includes('\x1b[1A');
-          const newLineCount = currentBuf.split('\n').length - 1;
+          // Ink / log-update 帧刷新必然会包含清除宏 \x1b[2K
+          const isLogUpdateFrame = /\x1B\[2K/i.test(currentBuf);
 
-          if (hasErase) {
-            // 剥夺暴力的行级擦除与向底擦除
-            let processed = currentBuf.replace(/\x1B\[2K/g, '').replace(/\x1B\[0J/g, '');
-            // 将每一个真实的换行前加上“擦除至行尾”指令，做到严丝合缝的原子重画
-            processed = processed.replace(/\n/g, '\x1B[K\n');
-            if (!processed.endsWith('\x1b[K')) {
-              processed += '\x1B[K';
+          if (isLogUpdateFrame) {
+            // 提取所有的光标归位/擦除前导控制符
+            let preambleMatch = currentBuf.match(/^((?:\x1B\[2K|\x1B\[1A|\x1B\[G|\x1B\[0J|\x1B\[\?25[hl])+)/i);
+            let preamble = preambleMatch ? preambleMatch[1] : '';
+            
+            // 剔除暴力的“清屏”与“清行”指令，仅保留“光标上移”与“状态切换”
+            let movingPreamble = preamble.replace(/\x1B\[2K/gi, '').replace(/\x1B\[0J/gi, '');
+            
+            // 提取纯净的新帧文本内容并按行切割
+            let payload = currentBuf.substring(preamble.length);
+            let newLinesArray = payload.split('\n');
+
+            let out = movingPreamble; 
+            for (let i = 0; i < newLinesArray.length; i++) {
+               let line = newLinesArray[i];
+               let isLastLine = i === newLinesArray.length - 1;
+
+               // 【真·双层缓冲差分 Diffing】
+               // 如果这一行完全没有变化，我们直接斩断网络数据传输（不发 ANSI 重绘指令）！
+               if (prevLines[i] === line) {
+                   if (!isLastLine) {
+                       // 仅发送换行符将光标导向下一行，跳过当前行的渲染
+                       out += '\n';
+                   }
+               } else {
+                   // 若内容变化，才打印这行新字符，并在尾部补上一刀局部擦除 \x1B[K
+                   out += line + '\x1B[K';
+                   if (!isLastLine) {
+                       out += '\n';
+                   }
+               }
+            }
+            
+            // 如果旧帧更长，在新帧画完后清理残余尸体，并把光标重置回逻辑底部
+            if (newLinesArray.length < prevLines.length) {
+               let diff = prevLines.length - newLinesArray.length;
+               let cleanup = '';
+               for (let i = 0; i < diff; i++) {
+                   cleanup += '\n\x1B[K';
+               }
+               cleanup += `\x1B[${diff}A`;
+               out += cleanup;
             }
 
-            // 如果新的一帧内容变短了，底部的旧屏幕可能会因为失去了暴力清屏而残余。
-            // 我们手动用无闪烁的方式洗掉它，然后将光标恢复定位
-            if (newLineCount < prevLineCount) {
-              const diff = prevLineCount - newLineCount;
-              let cleanup = '';
-              for (let i = 0; i < diff; i++) {
-                cleanup += '\n\x1B[K';
-              }
-              cleanup += `\x1B[${diff}A`;
-              processed += cleanup;
-            }
-            currentBuf = processed;
+            prevLines = newLinesArray;
+            origWrite(out);
+          } else {
+            // 非连续动画帧（如 Initial Render 或 Console 清理场景）
+            origWrite(currentBuf);
+            // 建立初始缓冲帧基线
+            prevLines = currentBuf.split('\n');
           }
-
-          prevLineCount = newLineCount;
-          // DEC Private Mode 2026 (Synchronized Output) 兜底双保险
-          origWrite('\x1b[?2026h' + currentBuf + '\x1b[?2026l');
         });
       }
       if (callback) queueMicrotask(() => callback());

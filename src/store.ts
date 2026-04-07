@@ -32,11 +32,20 @@ export function saveStore(store: AppStore): void {
   writeFileSync(STORE_FILE, JSON.stringify(store, null, 2) + '\n');
 }
 
-export function ensureBackup(store: AppStore): AppStore {
-  if (store.backup) return store;
+function readCurrentBackupState(): NonNullable<AppStore['backup']> {
   const authJson = existsSync(AUTH_FILE) ? JSON.parse(readFileSync(AUTH_FILE, 'utf-8')) : {};
   const configToml = existsSync(CONFIG_FILE) ? readFileSync(CONFIG_FILE, 'utf-8') : '';
-  store.backup = { authJson, configToml };
+  return { authJson, configToml };
+}
+
+export function ensureBackup(store: AppStore): AppStore {
+  // backup 代表“本次启动前的当前全局状态”，不是永久冻结的初始值。
+  // 这样用户在 cs 外手动修改 config.toml / auth.json 后，下次启动会以这些新值为基线。
+  const current = readCurrentBackupState();
+  const sameAuth = JSON.stringify(store.backup?.authJson ?? {}) === JSON.stringify(current.authJson);
+  const sameConfig = (store.backup?.configToml ?? '') === current.configToml;
+  if (sameAuth && sameConfig) return store;
+  store.backup = current;
   saveStore(store);
   return store;
 }
